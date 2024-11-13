@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta
-from typing import Tuple, Optional, Dict, Any
+from typing import Tuple, Optional, Dict, Any, List
 import time
 import yfinance as yf
 import pandas as pd
@@ -8,6 +8,7 @@ from pandas_datareader import data as pdr
 import pandas_datareader.data as web
 import logging
 import json
+import re
 import sqlite3
 
 logger = logging.getLogger(__name__)
@@ -43,7 +44,7 @@ class Cache:
             """)
             conn.commit()
 
-    def get_cached_data(self, ticker: str, start_date: str, end_date: str) -> Optional[pd.DataFrame]:
+    def get_cached_data(self, ticker: str, start_date: datetime, end_date: datetime) -> Optional[pd.DataFrame]:
         """Retrieve cached stock data with proper column names and date index."""
         with sqlite3.connect(self.db_path) as conn:
             query = """
@@ -56,12 +57,16 @@ class Cache:
                 df = pd.read_sql_query(
                     query, 
                     conn, 
-                    params=(ticker, start_date, end_date),
+                    params=(
+                        ticker, 
+                        start_date.strftime("%Y-%m-%d"),
+                        end_date.strftime("%Y-%m-%d")
+                    ),
                     parse_dates=['date']
                 )
                 
                 if not df.empty:
-                    # Rename columns to match yfinance format
+                    # Rename columns to match yfinance format and set index
                     df.columns = ['Date', 'Open', 'High', 'Low', 'Close', 'Adj Close', 'Volume']
                     df.set_index('Date', inplace=True)
                     return df
@@ -71,7 +76,7 @@ class Cache:
             return None
 
     def update_stock_data(self, ticker: str, df: pd.DataFrame):
-        """Update cache with properly formatted stock data."""
+        """Update cache with new stock data, avoiding duplicates."""
         if df is None or df.empty:
             return
             
@@ -98,23 +103,24 @@ class Cache:
                 # Add ticker column
                 df_to_cache['ticker'] = ticker
                 
-                # Delete existing data for this ticker and date range
-                conn.execute(
-                    "DELETE FROM stock_data WHERE ticker = ? AND date BETWEEN ? AND ?",
-                    (ticker, df_to_cache['date'].min(), df_to_cache['date'].max())
-                )
+                # Use INSERT OR REPLACE to handle duplicates
+                conn.executemany("""
+                    INSERT OR REPLACE INTO stock_data 
+                    (ticker, date, open, high, low, close, adj_close, volume)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """, [
+                    (
+                        row['ticker'],
+                        row['date'],
+                        row['open'],
+                        row['high'],
+                        row['low'],
+                        row['close'],
+                        row['adj_close'],
+                        row['volume']
+                    ) for _, row in df_to_cache.iterrows()
+                ])
                 
-                # Insert new data
-                for _, row in df_to_cache.iterrows():
-                    conn.execute("""
-                        INSERT INTO stock_data 
-                        (ticker, date, open, high, low, close, adj_close, volume)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                    """, (
-                        row['ticker'], row['date'], row['open'], row['high'],
-                        row['low'], row['close'], row['adj_close'], row['volume']
-                    ))
-                    
                 conn.commit()
                 
             except Exception as e:
@@ -122,10 +128,9 @@ class Cache:
                 conn.rollback()
 
     def get_cached_company_info(self, ticker: str) -> Optional[dict]:
-        """Retrieve cached company info."""
+        """Retrieve cached company info that's less than 24 hours old."""
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
-            # Get cached data that's less than 24 hours old
             cursor.execute("""
                 SELECT info FROM company_info 
                 WHERE ticker = ? AND 
@@ -175,14 +180,51 @@ class StockDataService:
     _cache = Cache()
     REQUIRED_COLUMNS = ['Open', 'High', 'Low', 'Close', 'Adj Close', 'Volume']
     
-    PERIODS = {
-        '6mo': '6mo',
-        '1y': '1y',
-        '3y': '3y',
-        '5y': '5y',
-        'max': 'max'
-    }
+    @staticmethod
+    def normalize_stock_data(df: pd.DataFrame) -> pd.DataFrame:
+        """Normalize stock data to have consistent columns and timezone-naive dates"""
+        if df is None or df.empty:
+            return df
+            
+        # Convert index to timezone-naive datetime
+        if df.index.tz is not None:
+            df.index = df.index.tz_localize(None)
+        
+        # Normalize column names
+        df.columns = [col.replace(' ', '_') for col in df.columns]
+        
+        # Handle missing Adj Close
+        if 'Adj_Close' not in df.columns and 'Close' in df.columns:
+            df['Adj_Close'] = df['Close']
+        
+        # Ensure all required columns exist
+        required_columns = ['Open', 'High', 'Low', 'Close', 'Adj_Close', 'Volume']
+        for col in required_columns:
+            if col not in df.columns:
+                logger.warning(f"Missing column {col}, using Close price")
+                df[col] = df['Close'] if 'Close' in df.columns else None
+        
+        # Remove unnecessary columns
+        df = df[required_columns]
+        
+        # Rename columns to standard format
+        df.columns = ['Open', 'High', 'Low', 'Close', 'Adj Close', 'Volume']
+        
+        return df
 
+    @staticmethod
+    def should_refresh_data(ticker: str, cached_data: Optional[pd.DataFrame] = None) -> bool:
+        """Determine if most recent data should be refreshed"""
+        if cached_data is None:
+            return True
+            
+        now = pd.Timestamp.now().normalize()
+        last_data_time = cached_data.index[-1]
+        data_age = now - last_data_time
+        
+        # Refresh if last data point is more than a day old
+        return data_age > pd.Timedelta(days=1)
+    
     @staticmethod
     def get_date_range(timeframe: str) -> Tuple[datetime, datetime]:
         """Calculate date range based on timeframe"""
@@ -197,28 +239,79 @@ class StockDataService:
         if timeframe in timeframe_days:
             days = timeframe_days[timeframe]
         else:
-            # Attempt to parse custom timeframe like 'Xmo' or 'Xy'
             match = re.match(r"(\d+)(mo|y)", timeframe)
             if match:
                 amount, unit = match.groups()
                 if unit == "mo":
-                    days = int(amount) * 30  # Approximate 1 month as 30 days
+                    days = int(amount) * 30
                 elif unit == "y":
                     days = int(amount) * 365
             else:
                 logger.warning(f"Invalid timeframe '{timeframe}', defaulting to '1y'")
                 days = timeframe_days['1y']
 
-        end_date = datetime.now().replace(hour=23, minute=59, second=59, microsecond=999999)
-        start_date = end_date - timedelta(days=days)
+        # Set end_date to today at start of day (00:00:00)
+        end_date = pd.Timestamp.now().normalize()
+        start_date = (end_date - pd.Timedelta(days=days)).normalize()
         
-        # Adjust start_date to the nearest previous weekday if it falls on a weekend
-        while start_date.weekday() > 4:  # 5 and 6 are Saturday and Sunday
-            start_date -= timedelta(days=1)
-
+        # Ensure timezone-naive
+        if end_date.tz is not None:
+            end_date = end_date.tz_localize(None)
+        if start_date.tz is not None:
+            start_date = start_date.tz_localize(None)
+        
         logger.debug(f"Calculated date range for {timeframe}: {start_date} to {end_date}")
         return start_date, end_date
 
+    @staticmethod
+    def get_required_date_ranges(
+        target_start: datetime,
+        target_end: datetime,
+        cached_data: Optional[pd.DataFrame]
+    ) -> List[Tuple[datetime, datetime]]:
+        """Calculate what date ranges need to be fetched based on cache"""
+        if cached_data is None or cached_data.empty:
+            return [(target_start, target_end)]
+            
+        # Convert to pandas timestamps and ensure timezone-naive
+        target_start = pd.Timestamp(target_start).tz_localize(None)
+        target_end = pd.Timestamp(target_end).tz_localize(None)
+        
+        # Get actual data range from cache
+        cached_start = cached_data.index.min()
+        cached_end = cached_data.index.max()
+        
+        missing_ranges = []
+        
+        # If we need earlier data
+        if target_start < cached_start:
+            missing_ranges.append((target_start, cached_start))
+            
+        # If we need later data
+        if target_end > cached_end:
+            missing_ranges.append((cached_end, target_end))
+            
+        return missing_ranges
+
+    @staticmethod
+    def fetch_from_yfinance(ticker: str, start_date: datetime, end_date: datetime) -> Optional[pd.DataFrame]:
+        """Fetches data from Yahoo Finance for a specific date range"""
+        try:
+            stock = yf.Ticker(ticker)
+            
+            # Ensure dates are timezone-naive
+            start_date = pd.Timestamp(start_date).tz_localize(None)
+            end_date = pd.Timestamp(end_date).tz_localize(None)
+            
+            df = stock.history(start=start_date, end=end_date)
+            if not df.empty:
+                return StockDataService.normalize_stock_data(df)
+            return None
+                
+        except Exception as e:
+            logger.error(f"Error fetching data for {ticker}: {str(e)}")
+            return None
+    
     @staticmethod
     def validate_ticker(ticker: str) -> Tuple[bool, str]:
         """Validate ticker symbol with improved error handling"""
@@ -249,54 +342,6 @@ class StockDataService:
         return False, "Unable to verify ticker existence"
 
     @staticmethod
-    def fetch_from_yfinance(ticker: str, timeframe: str) -> Optional[pd.DataFrame]:
-        """Fetches data from Yahoo Finance with improved error handling."""
-        try:
-            start_date, end_date = StockDataService.get_date_range(timeframe)
-            
-            # First try using pandas_datareader
-            try:
-                df = pdr.get_data_yahoo(ticker, start=start_date, end=end_date)
-                if not df.empty and all(col in df.columns for col in StockDataService.REQUIRED_COLUMNS):
-                    return df
-            except Exception as e:
-                logger.warning(f"pandas_datareader fetch failed for {ticker}: {str(e)}")
-            
-            # If that fails, try direct yfinance
-            try:
-                stock = yf.Ticker(ticker)
-                df = stock.history(period=timeframe, interval='1d')
-                
-                # Ensure column names match required format
-                df = df.rename(columns={
-                    'Open': 'Open',
-                    'High': 'High',
-                    'Low': 'Low',
-                    'Close': 'Close',
-                    'Adj Close': 'Adj Close',
-                    'Volume': 'Volume'
-                })
-                
-                if not df.empty and all(col in df.columns for col in StockDataService.REQUIRED_COLUMNS):
-                    return df
-            except Exception as e:
-                logger.warning(f"yfinance direct fetch failed for {ticker}: {str(e)}")
-            
-            # If both methods fail, try one more time with backup method
-            try:
-                df = web.DataReader(ticker, 'yahoo', start_date, end_date)
-                if not df.empty and all(col in df.columns for col in StockDataService.REQUIRED_COLUMNS):
-                    return df
-            except Exception as e:
-                logger.warning(f"web.DataReader fetch failed for {ticker}: {str(e)}")
-            
-            return None
-            
-        except Exception as e:
-            logger.error(f"All fetch attempts failed for {ticker}: {str(e)}")
-            return None
-
-    @staticmethod
     def fetch_stock_data(ticker: str, timeframe: str) -> Optional[pd.DataFrame]:
         """Fetch stock data with improved error handling and caching"""
         try:
@@ -305,95 +350,64 @@ class StockDataService:
             if not ticker or not timeframe:
                 raise ValueError("Ticker and timeframe must be provided")
                 
-            start_date, end_date = StockDataService.get_date_range(timeframe)
+            target_start, target_end = StockDataService.get_date_range(timeframe)
+            logger.info(f"Target date range for {ticker}: {target_start} to {target_end}")
             
-            # Check cache first
+            # Get any existing cached data within our target range
             cached_data = StockDataService._cache.get_cached_data(
                 ticker, 
-                start_date.strftime("%Y-%m-%d"),
-                end_date.strftime("%Y-%m-%d")
+                target_start,
+                target_end
             )
             
+            df_list = []
             if cached_data is not None and not cached_data.empty:
-                logger.info(f"Using cached data for {ticker}")
-                return cached_data
+                logger.info(f"Found cached data for {ticker} from {cached_data.index.min()} to {cached_data.index.max()}")
+                df_list.append(cached_data)
                 
-            # Try fetching fresh data
-            df = StockDataService.fetch_from_yfinance(ticker, timeframe)
+                # Calculate what ranges we're missing
+                missing_ranges = StockDataService.get_required_date_ranges(
+                    target_start, target_end, cached_data
+                )
+            else:
+                logger.info(f"No cached data found for {ticker} in target range")
+                missing_ranges = [(target_start, target_end)]
             
-            # Validate and process the data
-            if df is not None and not df.empty:
-                # Check required columns
-                missing_columns = [col for col in StockDataService.REQUIRED_COLUMNS if col not in df.columns]
+            # Fetch any missing data
+            for start_date, end_date in missing_ranges:
+                logger.info(f"Fetching missing data for {ticker} from {start_date} to {end_date}")
                 
-                if missing_columns:
-                    logger.error(f"Missing required columns for {ticker}: {missing_columns}")
-                    # Try to fix common column name mismatches
-                    df = StockDataService._fix_column_names(df)
-                    
-                    # Check again after fixing
-                    missing_columns = [col for col in StockDataService.REQUIRED_COLUMNS if col not in df.columns]
-                    if missing_columns:
-                        return None
+                missing_df = StockDataService.fetch_from_yfinance(ticker, start_date, end_date)
                 
-                # Ensure data types
-                df = StockDataService._ensure_data_types(df)
-                
-                # Cache the valid data
-                StockDataService._cache.update_stock_data(ticker, df)
-                return df
+                if missing_df is not None and not missing_df.empty:
+                    df_list.append(missing_df)
+                    StockDataService._cache.update_stock_data(ticker, missing_df)
             
-            logger.error(f"No valid data available for {ticker}")
-            return None
+            if not df_list:
+                logger.warning(f"No data available for {ticker}")
+                return None
+                
+            # Combine all data pieces
+            final_df = pd.concat(df_list, axis=0)
+            final_df = final_df[~final_df.index.duplicated(keep='last')]
+            final_df.sort_index(inplace=True)
             
+            # Filter to requested timeframe and ensure timezone-naive
+            final_df = final_df[
+                (final_df.index >= pd.Timestamp(target_start)) & 
+                (final_df.index <= pd.Timestamp(target_end))
+            ]
+            
+            logger.info(f"Final dataset for {ticker}: {len(final_df)} rows from {final_df.index.min()} to {final_df.index.max()}")
+            return final_df
+                
         except Exception as e:
             logger.error(f"Error fetching stock data for {ticker}: {str(e)}")
             return None
 
     @staticmethod
-    def _fix_column_names(df: pd.DataFrame) -> pd.DataFrame:
-        """Fix common column name mismatches."""
-        # Common variations of column names
-        name_map = {
-            'Adj Close': ['Adj_Close', 'AdjClose', 'Adjusted_Close', 'Adjusted Close'],
-            'Adj. Close': ['Adj Close', 'AdjClose', 'Adjusted_Close', 'Adjusted Close'],
-            'adj_close': ['Adj Close', 'AdjClose', 'Adjusted_Close', 'Adjusted Close'],
-            'adj close': ['Adj Close', 'AdjClose', 'Adjusted_Close', 'Adjusted Close']
-        }
-        
-        for standard_name, variants in name_map.items():
-            for variant in variants:
-                if variant in df.columns and standard_name not in df.columns:
-                    df = df.rename(columns={variant: standard_name})
-                    
-        return df
-
-    @staticmethod
-    def _ensure_data_types(df: pd.DataFrame) -> pd.DataFrame:
-        """Ensure correct data types for each column."""
-        try:
-            # Ensure index is datetime
-            if not isinstance(df.index, pd.DatetimeIndex):
-                df.index = pd.to_datetime(df.index)
-            
-            # Ensure numeric columns are float
-            numeric_columns = ['Open', 'High', 'Low', 'Close', 'Adj Close']
-            for col in numeric_columns:
-                if col in df.columns:
-                    df[col] = pd.to_numeric(df[col], errors='coerce')
-            
-            # Ensure Volume is int
-            if 'Volume' in df.columns:
-                df['Volume'] = pd.to_numeric(df['Volume'], errors='coerce').fillna(0).astype(int)
-            
-            return df
-        except Exception as e:
-            logger.error(f"Error ensuring data types: {str(e)}")
-            return df
-
-    @staticmethod
     def get_company_overview(ticker: str) -> Dict[str, Any]:
-        """Fetches company overview with improved caching."""
+        """Fetches company overview with improved caching"""
         try:
             # Check cache first
             cached_info = StockDataService._cache.get_cached_company_info(ticker)
@@ -411,7 +425,7 @@ class StockDataService:
             
             logger.warning(f"No company info available for {ticker}")
             return {}
-            
+                
         except Exception as e:
             logger.error(f"Error fetching company overview: {str(e)}")
             return {}
