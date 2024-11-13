@@ -166,7 +166,7 @@ class DashboardComponents:
         recommendation: Dict[str, Any],
         price_targets: Optional[Dict[str, Any]]
     ) -> html.Div:
-        """Create the recommendation and price targets layout
+        """Create the recommendation and price targets layout with improved styling
         
         Args:
             recommendation (Dict): Recommendation data
@@ -180,87 +180,244 @@ class DashboardComponents:
                 raise ValueError("No price targets data available")
                 
             return html.Div([
-                # Main title
-                html.H3("Price Analysis & Recommendation", className='section-title'),
-                
-                # Grid container for the two columns
+                # Main container
                 html.Div([
                     # Left column - Recommendation section
                     html.Div([
-                        html.H4(
-                            f"Recommendation: {recommendation['recommendation']}", 
-                            style={
-                                'color': recommendation['color'],
-                                'marginBottom': '12px',
-                                'fontSize': '24px',
-                                'fontWeight': '600'
-                            }
-                        ),
-                        html.P(
-                            f"Confidence: {recommendation['confidence']:.1f}%",
-                            style={
-                                'marginBottom': '20px',
-                                'color': '#374151',
-                                'fontSize': '16px'
-                            }
-                        ),
-                        html.H5(
-                            "Key Factors:",
-                            style={
-                                'fontWeight': '600',
-                                'color': '#1f2937',
-                                'marginBottom': '12px',
-                                'fontSize': '16px'
-                            }
-                        ),
-                        html.Ul(
-                            [html.Li(reason) for reason in recommendation['reasons']],
-                            style={
-                                'listStyleType': 'disc',
-                                'paddingLeft': '1.25rem'
-                            }
-                        )
-                    ], className='recommendation-section'),
+                        # Recommendation Header with badge-style display
+                        html.Div([
+                            html.H4(
+                                "Recommendation:", 
+                                style={
+                                    'color': '#1f2937',  # Dark gray for better readability
+                                    'marginBottom': '4px',
+                                    'fontSize': '18px',
+                                    'fontWeight': '500'
+                                }
+                            ),
+                            html.Div(
+                                recommendation['recommendation'],
+                                style={
+                                    'color': 'white',  # White text
+                                    'backgroundColor': recommendation['color'],
+                                    'padding': '8px 16px',
+                                    'borderRadius': '6px',
+                                    'fontSize': '24px',
+                                    'fontWeight': '600',
+                                    'display': 'inline-block',
+                                    'marginBottom': '12px'
+                                }
+                            ),
+                        ]),
+                        
+                        # Confidence score
+                        html.Div([
+                            html.Span(
+                                "Confidence Score: ",
+                                style={
+                                    'color': '#4b5563',
+                                    'fontSize': '16px',
+                                    'fontWeight': '500'
+                                }
+                            ),
+                            html.Span(
+                                f"{recommendation['confidence']:.1f}%",
+                                style={
+                                    'color': '#1f2937',
+                                    'fontSize': '16px',
+                                    'fontWeight': '600'
+                                }
+                            )
+                        ], style={'marginBottom': '20px'}),
+                        
+                        # Analysis Factors
+                        html.Div([
+                            html.H5(
+                                "Key Analysis Factors:",
+                                style={
+                                    'color': '#1f2937',
+                                    'marginBottom': '12px',
+                                    'fontSize': '16px',
+                                    'fontWeight': '600'
+                                }
+                            ),
+                            html.Ul(
+                                [
+                                    html.Li(
+                                        reason,
+                                        style={
+                                            'color': '#4b5563',
+                                            'marginBottom': '8px',
+                                            'fontSize': '14px',
+                                            'lineHeight': '1.5'
+                                        }
+                                    ) for reason in recommendation['reasons']
+                                ],
+                                style={
+                                    'listStyleType': 'disc',
+                                    'paddingLeft': '1.25rem',
+                                    'marginBottom': '20px'
+                                }
+                            )
+                        ]),
+                        
+                        # Risk Level if available
+                        html.Div([
+                            html.H5(
+                                "Risk Level:",
+                                style={
+                                    'color': '#1f2937',
+                                    'marginBottom': '8px',
+                                    'fontSize': '16px',
+                                    'fontWeight': '600'
+                                }
+                            ),
+                            html.Div(
+                                recommendation.get('risk_level', 'N/A'),
+                                style={
+                                    'color': '#4b5563',
+                                    'fontSize': '14px',
+                                    'fontWeight': '500',
+                                    'marginBottom': '16px'
+                                }
+                            )
+                        ]) if recommendation.get('risk_level') else None,
+                        
+                    ], className='recommendation-section', style={
+                        'backgroundColor': '#ffffff',
+                        'padding': '24px',
+                        'borderRadius': '8px',
+                        'boxShadow': '0 1px 3px rgba(0, 0, 0, 0.1)',
+                        'flex': '1'
+                    }),
 
                     # Right column - Price Targets section
                     html.Div([
                         html.H4(
                             "Price Targets",
                             style={
+                                'color': '#1f2937',
                                 'marginBottom': '20px',
-                                'fontSize': '20px',
-                                'fontWeight': '600',
-                                'color': '#1f2937'
+                                'fontSize': '18px',
+                                'fontWeight': '600'
                             }
                         ),
                         html.Div([
-                            DashboardComponents._create_price_target_row(
-                                "Technical Target:", 
-                                f"${price_targets['technical_target']:.2f}"
-                            ),
-                            DashboardComponents._create_price_target_row(
-                                "Support Level:", 
-                                f"${price_targets['support_level']:.2f}"
-                            ),
-                            DashboardComponents._create_price_target_row(
-                                "Resistance Level:", 
-                                f"${price_targets['resistance_level']:.2f}"
-                            ),
-                            DashboardComponents._create_price_target_row(
-                                "Volatility Range:", 
-                                f"${price_targets['volatility_range'][0]:.2f} - "
-                                f"${price_targets['volatility_range'][1]:.2f}"
-                            )
+                            # Current Price
+                            html.Div([
+                                html.Div(
+                                    "Current Price",
+                                    className='label',
+                                    style={'color': '#6b7280', 'fontSize': '14px'}
+                                ),
+                                html.Div(
+                                    f"${price_targets['current_price']:.2f}",
+                                    className='value',
+                                    style={
+                                        'color': '#1f2937',
+                                        'fontSize': '16px',
+                                        'fontWeight': '600'
+                                    }
+                                )
+                            ], className='price-target-row', style={'marginBottom': '12px'}),
+                            
+                            # Technical Target
+                            html.Div([
+                                html.Div(
+                                    "Technical Target",
+                                    className='label',
+                                    style={'color': '#6b7280', 'fontSize': '14px'}
+                                ),
+                                html.Div(
+                                    f"${price_targets['technical_target']:.2f}",
+                                    className='value',
+                                    style={
+                                        'color': '#1f2937',
+                                        'fontSize': '16px',
+                                        'fontWeight': '600'
+                                    }
+                                )
+                            ], className='price-target-row', style={'marginBottom': '12px'}),
+                            
+                            # Support Level
+                            html.Div([
+                                html.Div(
+                                    "Support Level",
+                                    className='label',
+                                    style={'color': '#6b7280', 'fontSize': '14px'}
+                                ),
+                                html.Div(
+                                    f"${price_targets['support_level']:.2f}",
+                                    className='value',
+                                    style={
+                                        'color': '#1f2937',
+                                        'fontSize': '16px',
+                                        'fontWeight': '600'
+                                    }
+                                )
+                            ], className='price-target-row', style={'marginBottom': '12px'}),
+                            
+                            # Resistance Level
+                            html.Div([
+                                html.Div(
+                                    "Resistance Level",
+                                    className='label',
+                                    style={'color': '#6b7280', 'fontSize': '14px'}
+                                ),
+                                html.Div(
+                                    f"${price_targets['resistance_level']:.2f}",
+                                    className='value',
+                                    style={
+                                        'color': '#1f2937',
+                                        'fontSize': '16px',
+                                        'fontWeight': '600'
+                                    }
+                                )
+                            ], className='price-target-row', style={'marginBottom': '12px'}),
+                            
+                            # Volatility Range
+                            html.Div([
+                                html.Div(
+                                    "Volatility Range",
+                                    className='label',
+                                    style={'color': '#6b7280', 'fontSize': '14px'}
+                                ),
+                                html.Div(
+                                    f"${price_targets['volatility_range'][0]:.2f} - ${price_targets['volatility_range'][1]:.2f}",
+                                    className='value',
+                                    style={
+                                        'color': '#1f2937',
+                                        'fontSize': '16px',
+                                        'fontWeight': '600'
+                                    }
+                                )
+                            ], className='price-target-row')
                         ], className='price-targets-grid')
-                    ], className='price-targets-section')
-                ], className='analysis-grid')
+                    ], className='price-targets-section', style={
+                        'backgroundColor': '#ffffff',
+                        'padding': '24px',
+                        'borderRadius': '8px',
+                        'boxShadow': '0 1px 3px rgba(0, 0, 0, 0.1)',
+                        'flex': '1'
+                    })
+                ], style={
+                    'display': 'flex',
+                    'gap': '24px',
+                    'flexWrap': 'wrap'
+                })
             ], className='analysis-container')
             
         except Exception as e:
             return html.Div([
                 html.Div([
-                    html.I(className="fas fa-exclamation-circle mr-2"),
-                    html.Span(f"Error creating recommendation layout: {str(e)}")
+                    html.I(
+                        className="fas fa-exclamation-circle mr-2",
+                        style={'marginRight': '8px', 'color': '#dc2626'}
+                    ),
+                    html.Span(
+                        f"Error creating recommendation layout: {str(e)}",
+                        style={'color': '#dc2626'}
+                    )
                 ], className='error-content')
             ], className='error-container')
 
