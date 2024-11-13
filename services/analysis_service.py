@@ -4,6 +4,7 @@ import numpy as np
 from typing import Dict, Any, Optional, List, Tuple
 import logging
 from technical_indicators import TechnicalIndicators
+from services.stock_data_service import StockDataService
 
 class AnalysisService:
     """Service for analyzing stock data and generating recommendations"""
@@ -378,4 +379,124 @@ class AnalysisService:
             'action': 'Hold',
             'color': 'yellow',
             'risk_level': risk_level
+        }
+
+    @staticmethod
+    def run_portfolio_backtesting(holdings: List[Dict], start_date: str, end_date: str) -> Dict:
+        """Run backtesting analysis on a portfolio
+        
+        Args:
+            holdings: List of dictionaries containing 'ticker' and 'allocation'
+            start_date: Start date for backtesting period
+            end_date: End date for backtesting period
+        """
+        try:
+            logger = logging.getLogger(__name__)
+            logger.info(f"Starting backtesting from {start_date} to {end_date}")
+            
+            # Calculate the period for fetching data
+            start_date_obj = pd.to_datetime(start_date)
+            end_date_obj = pd.to_datetime(end_date)
+            period = AnalysisService._calculate_period(start_date_obj, end_date_obj)
+            
+            # Fetch data for each holding
+            portfolio_data = {}
+            for holding in holdings:
+                ticker = holding["ticker"]
+                allocation = holding["allocation"] / 100.0  # Convert percentage to decimal
+                
+                logger.info(f"Fetching data for {ticker} with {allocation*100}% allocation")
+                df = StockDataService.fetch_stock_data(ticker, period)
+                
+                if df is not None and not df.empty:
+                    portfolio_data[ticker] = {
+                        "data": df,
+                        "allocation": allocation
+                    }
+                else:
+                    logger.warning(f"No data available for {ticker}")
+            
+            if not portfolio_data:
+                raise ValueError("No valid data available for any holdings")
+            
+            # Calculate portfolio returns
+            results = AnalysisService._calculate_portfolio_performance(
+                portfolio_data,
+                start_date_obj,
+                end_date_obj
+            )
+            
+            logger.info(f"Backtesting results: {results}")
+            return results
+            
+        except Exception as e:
+            logger.error(f"Error in portfolio backtesting: {str(e)}")
+            raise
+
+    @staticmethod
+    def _calculate_period(start_date: pd.Timestamp, end_date: pd.Timestamp) -> str:
+        """Calculate the appropriate period string for data fetching"""
+        days_diff = (end_date - start_date).days
+        
+        if days_diff <= 180:
+            return '6mo'
+        elif days_diff <= 365:
+            return '1y'
+        elif days_diff <= 365 * 3:
+            return '3y'
+        elif days_diff <= 365 * 5:
+            return '5y'
+        else:
+            return 'max'
+
+    @staticmethod
+    def _calculate_portfolio_performance(
+        portfolio_data: Dict,
+        start_date: pd.Timestamp,
+        end_date: pd.Timestamp
+    ) -> Dict:
+        """Calculate portfolio performance metrics
+        
+        Args:
+            portfolio_data: Dictionary of ticker data and allocations
+            start_date: Start date for analysis
+            end_date: End date for analysis
+        """
+        # Initialize portfolio returns series
+        portfolio_returns = pd.Series(0.0, index=next(iter(portfolio_data.values()))["data"].index)
+        
+        # Calculate weighted returns
+        for ticker, data in portfolio_data.items():
+            df = data["data"]
+            allocation = data["allocation"]
+            
+            # Calculate daily returns
+            returns = df["Close"].pct_change()
+            portfolio_returns += returns * allocation
+        
+        # Calculate performance metrics
+        total_return = (1 + portfolio_returns).prod() - 1
+        
+        # Get S&P 500 as benchmark
+        benchmark_df = StockDataService.fetch_stock_data("SPY", "1y")
+        benchmark_returns = benchmark_df["Close"].pct_change()
+        benchmark_total_return = (1 + benchmark_returns).prod() - 1
+        
+        # Calculate alpha (simplified)
+        alpha = total_return - benchmark_total_return
+        
+        # Calculate Sharpe Ratio (annualized)
+        risk_free_rate = 0.02  # Assume 2% risk-free rate
+        excess_returns = portfolio_returns - risk_free_rate/252  # Daily risk-free rate
+        sharpe_ratio = np.sqrt(252) * excess_returns.mean() / portfolio_returns.std()
+        
+        return {
+            "portfolio_return": total_return,
+            "benchmark_return": benchmark_total_return,
+            "alpha": alpha,
+            "sharpe_ratio": sharpe_ratio,
+            "volatility": portfolio_returns.std() * np.sqrt(252),  # Annualized volatility
+            "max_drawdown": (1 + portfolio_returns).cumprod().div(
+                (1 + portfolio_returns).cumprod().cummax()
+            ).min() - 1
         }

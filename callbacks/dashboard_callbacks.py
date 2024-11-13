@@ -1,7 +1,7 @@
 # callbacks/dashboard_callbacks.py
-from dash.dependencies import Input, Output, State
+from dash.dependencies import Input, Output, State, MATCH, ALL
 from dash.exceptions import PreventUpdate
-from dash import html
+from dash import html, callback_context
 import time
 import logging
 from typing import Dict, Any, List, Union, Tuple, Optional
@@ -23,15 +23,13 @@ class DashboardCallbacks:
         @app.callback(
             [Output('ticker-error', 'children'),
              Output('main-content', 'style'),
-             Output('benchmark-error', 'children')],  # New output for benchmark errors
+             Output('benchmark-error', 'children')],
             [Input('analyze-button', 'n_clicks'),
              Input('stock-input', 'n_submit'),
-             Input('benchmark-dropdown', 'value')],  # Add benchmark input
+             Input('benchmark-dropdown', 'value')],
             [State('stock-input', 'value')]
         )
         def validate_input(n_clicks, n_submit, benchmark_ticker, ticker_value):
-            """Callback to validate stock ticker input and benchmark"""
-            # If no trigger, prevent update
             if not n_clicks and not n_submit:
                 raise PreventUpdate
             
@@ -74,30 +72,35 @@ class DashboardCallbacks:
                         return f"Error validating ticker: {str(e)}", {'display': 'none'}, benchmark_error
             
             return error_message or "Unable to validate ticker", {'display': 'none'}, benchmark_error
+            
+            pass
 
         @app.callback(
-            [Output('stock-table', 'children'),
-            Output('stock-chart', 'figure'),
-            Output('volume-chart', 'figure'),
-            Output('technical-chart', 'figure'),
-            Output('current-price-card', 'children'),
-            Output('change-card', 'children'),
-            Output('volatility-card', 'children'),
-            Output('sharpe-ratio-card', 'children'),
-            Output('recommendation-container', 'children'),
-            Output('company-overview', 'children'),
-            Output('benchmark-status', 'children')],  # New output for benchmark status
+            [Output({'type': 'stock-table', 'user_id': MATCH}, 'children'),
+             Output({'type': 'stock-chart', 'user_id': MATCH}, 'figure'),
+             Output({'type': 'volume-chart', 'user_id': MATCH}, 'figure'),
+             Output({'type': 'technical-chart', 'user_id': MATCH}, 'figure'),
+             Output({'type': 'current-price-card', 'user_id': MATCH}, 'children'),
+             Output({'type': 'change-card', 'user_id': MATCH}, 'children'),
+             Output({'type': 'volatility-card', 'user_id': MATCH}, 'children'),
+             Output({'type': 'sharpe-ratio-card', 'user_id': MATCH}, 'children'),
+             Output({'type': 'recommendation-container', 'user_id': MATCH}, 'children'),
+             Output({'type': 'company-overview', 'user_id': MATCH}, 'children'),
+             Output({'type': 'benchmark-status', 'user_id': MATCH}, 'children')],
             [Input('analyze-button', 'n_clicks'),
-            Input('stock-input', 'n_submit'),
-            Input('timeframe-dropdown', 'value'),
-            Input('benchmark-dropdown', 'value')],
-            [State('stock-input', 'value')]
+             Input('stock-input', 'n_submit'),
+             Input('timeframe-dropdown', 'value'),
+             Input('benchmark-dropdown', 'value')],
+            [State('stock-input', 'value'),
+             State('user-id', 'data')]
         )
-        def update_dashboard(n_clicks, n_submit, timeframe, benchmark_ticker, ticker):
-            """Main callback to update all dashboard components"""
+
+        def update_dashboard(n_clicks, n_submit, timeframe, benchmark_ticker, ticker, user_id):
+            # If no user_id is provided, use default
+            user_id = user_id or 'default'
             if not (n_clicks or n_submit) or not ticker:
                 raise PreventUpdate
-            
+                
             # Initialize error components
             empty_fig, error_card, error_message = DashboardComponents.create_error_components()
             empty_response = [
@@ -116,7 +119,7 @@ class DashboardCallbacks:
             
             try:
                 ticker = ticker.strip().upper()
-                
+                                
                 # Configure logging
                 logging.basicConfig(level=logging.INFO)
                 logger = logging.getLogger(__name__)
@@ -278,3 +281,8 @@ class DashboardCallbacks:
             except Exception as e:
                 logger.error(f"Fatal error updating dashboard for {ticker}: {str(e)}")
                 return empty_response
+
+    @staticmethod
+    def _get_component_id(base_id: str, user_id: str) -> Dict:
+        """Helper method to create component IDs with user_id"""
+        return {'type': base_id, 'user_id': user_id}
