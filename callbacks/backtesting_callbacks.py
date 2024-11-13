@@ -59,8 +59,8 @@ def register_callbacks(app, db):
         Output("backtesting-results", "children"),
         Input("run-backtest-button", "n_clicks"),
         [State("portfolio-dropdown-backtesting", "value"),
-         State("backtesting-date-range", "start_date"),
-         State("backtesting-date-range", "end_date")]
+        State("backtesting-date-range", "start_date"),
+        State("backtesting-date-range", "end_date")]
     )
     def run_backtesting(n_clicks, portfolio_id, start_date, end_date):
         if n_clicks == 0:
@@ -94,8 +94,12 @@ def register_callbacks(app, db):
                 html.Table([
                     html.Tbody([
                         html.Tr([
-                            html.Td("Portfolio Return"),
+                            html.Td("Total Return"),
                             html.Td(f"{results['portfolio_return']*100:.2f}%")
+                        ]),
+                        html.Tr([
+                            html.Td("Annualized Return"),
+                            html.Td(f"{results['annualized_return']*100:.2f}%")
                         ]),
                         html.Tr([
                             html.Td("Benchmark Return"),
@@ -106,8 +110,24 @@ def register_callbacks(app, db):
                             html.Td(f"{results['alpha']*100:.2f}%")
                         ]),
                         html.Tr([
+                            html.Td("Beta"),
+                            html.Td(f"{results['beta']:.2f}")
+                        ]),
+                        html.Tr([
                             html.Td("Sharpe Ratio"),
                             html.Td(f"{results['sharpe_ratio']:.2f}")
+                        ]),
+                        html.Tr([
+                            html.Td("Volatility"),
+                            html.Td(f"{results['volatility']*100:.2f}%")
+                        ]),
+                        html.Tr([
+                            html.Td("Maximum Drawdown"),
+                            html.Td(f"{results['max_drawdown']*100:.2f}%")
+                        ]),
+                        html.Tr([
+                            html.Td("Information Ratio"),
+                            html.Td(f"{results['information_ratio']:.2f}")
                         ])
                     ])
                 ], className="results-table")

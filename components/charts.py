@@ -18,12 +18,12 @@ class ChartComponents:
             benchmark_name: Name of the benchmark index
         """
         # Calculate percentage change from first point
-        first_price = df['Close'].iloc[0]
-        df['pct_change'] = ((df['Close'] - first_price) / first_price) * 100
+        first_price = df['Adj Close'].iloc[0]
+        df['pct_change'] = ((df['Adj Close'] - first_price) / first_price) * 100
         
         if benchmark_df is not None:
-            first_benchmark = benchmark_df['Close'].iloc[0]
-            benchmark_df['pct_change'] = ((benchmark_df['Close'] - first_benchmark) / first_benchmark) * 100
+            first_benchmark = benchmark_df['Adj Close'].iloc[0]
+            benchmark_df['pct_change'] = ((benchmark_df['Adj Close'] - first_benchmark) / first_benchmark) * 100
         
         # Create figure with secondary y-axis
         fig = make_subplots(specs=[[{"secondary_y": True}]])
@@ -35,7 +35,7 @@ class ChartComponents:
                 open=df['Open'],
                 high=df['High'],
                 low=df['Low'],
-                close=df['Close'],
+                close=df['Adj Close'],
                 name=stock,
                 yaxis='y1'
             ),
@@ -168,7 +168,7 @@ class ChartComponents:
         # Add price
         fig.add_trace(
             go.Scatter(
-                x=df.index, y=df['Close'],
+                x=df.index, y=df['Adj Close'],
                 name='Price',
                 line=dict(color='blue'),
                 showlegend=True

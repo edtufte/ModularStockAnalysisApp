@@ -9,6 +9,9 @@ import requests
 import time
 from requests.exceptions import RequestException
 import pandas_datareader.data as web
+import sqlite3
+import json
+from threading import Lock
 
 logging.basicConfig(
     level=logging.INFO,
@@ -16,8 +19,324 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+class StockDataCache:
+    """Handle caching of stock data in SQLite database"""
+    
+    def __init__(self, db_path: str = "stock_cache.db"):
+        self.db_path = db_path
+        self.lock = Lock()  # Thread safety for cache operations
+        self._create_tables()
+
+    def _create_tables(self):
+        """Create necessary tables for caching"""
+        with self.lock:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                
+                # Table for stock price data
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS stock_data (
+                        ticker TEXT,
+                        date DATE,
+                        open REAL,
+                        high REAL,
+                        low REAL,
+                        close REAL,
+                        volume INTEGER,
+                        adj_close REAL,
+                        last_updated TIMESTAMP,
+                        PRIMARY KEY (ticker, date)
+                    )
+                """)
+                
+                # Table for company information
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS company_info (
+                        ticker TEXT PRIMARY KEY,
+                        info JSON,
+                        last_updated TIMESTAMP
+                    )
+                """)
+                
+                # Table for fundamental data
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS fundamental_data (
+                        ticker TEXT PRIMARY KEY,
+                        data JSON,
+                        last_updated TIMESTAMP
+                    )
+                """)
+                
+                # Table for data ranges to track what we have cached
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS data_ranges (
+                        ticker TEXT PRIMARY KEY,
+                        start_date DATE,
+                        end_date DATE,
+                        last_updated TIMESTAMP
+                    )
+                """)
+                
+                # Index for faster date range queries
+                cursor.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_stock_data_date 
+                    ON stock_data(ticker, date)
+                """)
+                
+                conn.commit()
+
+    def get_cached_data(self, ticker: str, start_date: datetime, end_date: datetime) -> Optional[pd.DataFrame]:
+        """Retrieve cached stock data for the given period"""
+        try:
+            with self.lock:
+                with sqlite3.connect(self.db_path) as conn:
+                    query = """
+                        SELECT date, open, high, low, close, volume, adj_close
+                        FROM stock_data
+                        WHERE ticker = ? AND date BETWEEN ? AND ?
+                        ORDER BY date
+                    """
+                    df = pd.read_sql_query(
+                        query,
+                        conn,
+                        params=(ticker, start_date.date(), end_date.date()),
+                        parse_dates=['date']
+                    )
+                    if not df.empty:
+                        df.set_index('date', inplace=True)
+                        df.rename(columns={'adj_close': 'Adj Close'}, inplace=True)
+                        return df
+                    return None
+        except Exception as e:
+            logger.error(f"Error retrieving cached data: {str(e)}")
+            return None
+
+    def get_data_range(self, ticker: str) -> Optional[Tuple[datetime, datetime]]:
+        """Get the date range of cached data for a ticker"""
+        try:
+            with self.lock:
+                with sqlite3.connect(self.db_path) as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("""
+                        SELECT start_date, end_date
+                        FROM data_ranges
+                        WHERE ticker = ?
+                    """, (ticker,))
+                    result = cursor.fetchone()
+                    if result:
+                        return (
+                            datetime.strptime(result[0], '%Y-%m-%d'),
+                            datetime.strptime(result[1], '%Y-%m-%d')
+                        )
+                    return None
+        except Exception as e:
+            logger.error(f"Error getting data range: {str(e)}")
+            return None
+        
+    def update_stock_data(self, ticker: str, df: pd.DataFrame):
+        """Update or insert new stock data"""
+        if df is None or df.empty:
+            return
+            
+        try:
+            with self.lock:
+                with sqlite3.connect(self.db_path) as conn:
+                    # Convert DataFrame to records
+                    records = []
+                    for date, row in df.iterrows():
+                        records.append((
+                            ticker,
+                            date.date(),
+                            row['Open'],
+                            row['High'],
+                            row['Low'],
+                            row['Close'],
+                            row['Volume'],
+                            row.get('Adj Close', row['Close']),  # Use Close if Adj Close not available
+                            datetime.now()
+                        ))
+                    
+                    # Use REPLACE to update existing records or insert new ones
+                    conn.executemany("""
+                        REPLACE INTO stock_data 
+                        (ticker, date, open, high, low, close, volume, adj_close, last_updated)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, records)
+                    
+                    # Update data range
+                    if records:
+                        start_date = min(r[1] for r in records)
+                        end_date = max(r[1] for r in records)
+                        
+                        conn.execute("""
+                            REPLACE INTO data_ranges 
+                            (ticker, start_date, end_date, last_updated)
+                            VALUES (?, ?, ?, ?)
+                        """, (ticker, start_date, end_date, datetime.now()))
+                    
+                    conn.commit()
+                    
+        except Exception as e:
+            logger.error(f"Error updating stock data cache: {str(e)}")
+
+    def update_partial_data(self, ticker: str, df: pd.DataFrame, start_date: datetime, end_date: datetime):
+        """Update a specific date range of data"""
+        if df is None or df.empty:
+            return
+            
+        try:
+            with self.lock:
+                with sqlite3.connect(self.db_path) as conn:
+                    # Delete existing data in the date range
+                    conn.execute("""
+                        DELETE FROM stock_data 
+                        WHERE ticker = ? AND date BETWEEN ? AND ?
+                    """, (ticker, start_date.date(), end_date.date()))
+                    
+                    # Insert new data
+                    records = []
+                    for date, row in df.iterrows():
+                        if start_date.date() <= date.date() <= end_date.date():
+                            records.append((
+                                ticker,
+                                date.date(),
+                                row['Open'],
+                                row['High'],
+                                row['Low'],
+                                row['Close'],
+                                row['Volume'],
+                                row.get('Adj Close', row['Close']),
+                                datetime.now()
+                            ))
+                    
+                    if records:
+                        conn.executemany("""
+                            INSERT INTO stock_data 
+                            (ticker, date, open, high, low, close, volume, adj_close, last_updated)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """, records)
+                        
+                        # Update data range if necessary
+                        current_range = self.get_data_range(ticker)
+                        if current_range:
+                            new_start = min(current_range[0], start_date)
+                            new_end = max(current_range[1], end_date)
+                        else:
+                            new_start = start_date
+                            new_end = end_date
+                            
+                        conn.execute("""
+                            REPLACE INTO data_ranges 
+                            (ticker, start_date, end_date, last_updated)
+                            VALUES (?, ?, ?, ?)
+                        """, (ticker, new_start.date(), new_end.date(), datetime.now()))
+                    
+                    conn.commit()
+                    
+        except Exception as e:
+            logger.error(f"Error updating partial data: {str(e)}")
+
+    def get_cached_company_info(self, ticker: str, max_age_hours: int = 24) -> Optional[Dict]:
+        """Retrieve cached company info if not expired"""
+        try:
+            with self.lock:
+                with sqlite3.connect(self.db_path) as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("""
+                        SELECT info, last_updated
+                        FROM company_info
+                        WHERE ticker = ?
+                    """, (ticker,))
+                    result = cursor.fetchone()
+                    
+                    if result:
+                        info, last_updated = result
+                        last_updated = datetime.strptime(last_updated, '%Y-%m-%d %H:%M:%S.%f')
+                        
+                        if datetime.now() - last_updated < timedelta(hours=max_age_hours):
+                            return json.loads(info)
+                    return None
+                    
+        except Exception as e:
+            logger.error(f"Error retrieving cached company info: {str(e)}")
+            return None
+    def update_company_info(self, ticker: str, info: Dict):
+        """Update or insert company information"""
+        try:
+            with self.lock:
+                with sqlite3.connect(self.db_path) as conn:
+                    conn.execute("""
+                        REPLACE INTO company_info (ticker, info, last_updated)
+                        VALUES (?, ?, ?)
+                    """, (ticker, json.dumps(info), datetime.now()))
+                    conn.commit()
+                    
+        except Exception as e:
+            logger.error(f"Error updating company info cache: {str(e)}")
+
+    def get_cached_fundamental_data(self, ticker: str, max_age_hours: int = 24) -> Optional[Dict]:
+        """Retrieve cached fundamental data if not expired"""
+        try:
+            with self.lock:
+                with sqlite3.connect(self.db_path) as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("""
+                        SELECT data, last_updated
+                        FROM fundamental_data
+                        WHERE ticker = ?
+                    """, (ticker,))
+                    result = cursor.fetchone()
+                    
+                    if result:
+                        data, last_updated = result
+                        last_updated = datetime.strptime(last_updated, '%Y-%m-%d %H:%M:%S.%f')
+                        
+                        if datetime.now() - last_updated < timedelta(hours=max_age_hours):
+                            return json.loads(data)
+                    return None
+                    
+        except Exception as e:
+            logger.error(f"Error retrieving cached fundamental data: {str(e)}")
+            return None
+
+    def update_fundamental_data(self, ticker: str, data: Dict):
+        """Update or insert fundamental data"""
+        try:
+            with self.lock:
+                with sqlite3.connect(self.db_path) as conn:
+                    conn.execute("""
+                        REPLACE INTO fundamental_data (ticker, data, last_updated)
+                        VALUES (?, ?, ?)
+                    """, (ticker, json.dumps(data), datetime.now()))
+                    conn.commit()
+                    
+        except Exception as e:
+            logger.error(f"Error updating fundamental data cache: {str(e)}")
+
+    def clear_old_cache(self, max_age_days: int = 30):
+        """Clear cache entries older than specified days"""
+        try:
+            with self.lock:
+                with sqlite3.connect(self.db_path) as conn:
+                    cutoff_date = datetime.now() - timedelta(days=max_age_days)
+                    
+                    conn.execute("""
+                        DELETE FROM company_info 
+                        WHERE last_updated < ?
+                    """, (cutoff_date,))
+                    
+                    conn.execute("""
+                        DELETE FROM fundamental_data 
+                        WHERE last_updated < ?
+                    """, (cutoff_date,))
+                    
+                    conn.commit()
+                    
+        except Exception as e:
+            logger.error(f"Error clearing old cache: {str(e)}")
+
 class StockDataService:
-    """Service class for fetching and validating stock data using multiple sources"""
+    """Service class for fetching and managing stock data with caching"""
     
     PERIODS = {
         '6mo': '6mo',
@@ -27,6 +346,44 @@ class StockDataService:
         'max': 'max'
     }
     
+    _cache = StockDataCache()
+    
+    @staticmethod
+    def get_date_range(timeframe: str) -> Tuple[datetime, datetime]:
+        """Convert timeframe string to start and end dates with validation
+        
+        Args:
+            timeframe (str): Time period ('6mo', '1y', '3y', '5y', 'max')
+            
+        Returns:
+            Tuple[datetime, datetime]: (start_date, end_date)
+            
+        Raises:
+            ValueError: If invalid timeframe provided
+        """
+        timeframe_days = {
+            '6mo': 180,
+            '1y': 365,
+            '3y': 1095,
+            '5y': 1825,
+            'max': 3650  # 10 years
+        }
+        
+        if timeframe not in timeframe_days:
+            logger.warning(f"Invalid timeframe '{timeframe}', defaulting to '1y'")
+            timeframe = '1y'
+        
+        end_date = datetime.now().replace(hour=23, minute=59, second=59, microsecond=999999)
+        days = timeframe_days[timeframe]
+        start_date = end_date - timedelta(days=days)
+        
+        # Adjust for weekends and common holidays
+        while start_date.weekday() > 4:  # 5 = Saturday, 6 = Sunday
+            start_date -= timedelta(days=1)
+        
+        logger.debug(f"Calculated date range for {timeframe}: {start_date} to {end_date}")
+        return start_date, end_date
+
     @staticmethod
     def _retry_with_backoff(func, *args, max_attempts=3, initial_delay=1, **kwargs):
         """Helper method to retry operations with exponential backoff"""
@@ -69,70 +426,26 @@ class StockDataService:
         except Exception as e:
             logger.error(f"Alternative source error: {str(e)}")
             return None
-    
-    @staticmethod
-    def _format_market_cap(market_cap: float) -> str:
-        """Format market cap with appropriate suffix and precision"""
-        if market_cap >= 1e12:
-            return f"${market_cap/1e12:.2f}T"
-        elif market_cap >= 1e9:
-            return f"${market_cap/1e9:.2f}B"
-        elif market_cap >= 1e6:
-            return f"${market_cap/1e6:.2f}M"
-        else:
-            return f"${market_cap:.2f}"
-    
-    @staticmethod
-    def _calculate_market_cap(price: float, volume: float, shares_outstanding: Optional[float] = None) -> Optional[float]:
-        """
-        Calculate market cap using the most accurate available data
-        
-        Args:
-            price (float): Current stock price
-            volume (float): Trading volume
-            shares_outstanding (float, optional): Number of shares outstanding
-        
-        Returns:
-            float: Calculated market cap if data is available; None if unavailable.
-        """
-        # Primary Method: Use price * shares_outstanding if shares outstanding data is available
-        if shares_outstanding is not None:
-            return price * shares_outstanding
 
-        # Fallback Method: Use price * (average monthly volume) as a proxy
-        # This assumes volume is daily; adjust if volume represents another period.
-        if volume is not None:
-            monthly_volume = volume * 30  # Using monthly volume as a fallback proxy
-            return price * monthly_volume
-
-        # If no reliable data is available, return None
-        return None
-    
     @staticmethod
     def validate_ticker(ticker: str) -> Tuple[bool, str]:
         """Validate stock ticker symbol with multiple attempts and sources"""
         try:
-            # Basic cleanups
             ticker = ticker.strip().upper()
             
-            # Length check
             if len(ticker) == 0:
                 return False, "Ticker symbol cannot be empty"
             if len(ticker) > 6:
                 return False, "Ticker symbol too long"
                 
-            # Character validation
             valid_chars = set("ABCDEFGHIJKLMNOPQRSTUVWXYZ.-")
             if not all(char in valid_chars for char in ticker):
                 return False, "Ticker contains invalid characters"
                 
-            # Must start with a letter
             if not ticker[0].isalpha():
                 return False, "Ticker must start with a letter"
             
-            # Try multiple data sources
             try:
-                # Try yfinance first
                 stock = yf.Ticker(ticker)
                 info = StockDataService._retry_with_backoff(
                     lambda: stock.info,
@@ -143,7 +456,6 @@ class StockDataService:
             except Exception as e:
                 logger.warning(f"YFinance validation failed: {str(e)}")
                 
-            # Try alternative source
             try:
                 end_date = datetime.now()
                 start_date = end_date - timedelta(days=5)
@@ -157,111 +469,98 @@ class StockDataService:
             
         except Exception as e:
             return False, f"Error validating ticker: {str(e)}"
-    
+
     @staticmethod
     def fetch_stock_data(ticker: str, timeframe: str) -> Optional[pd.DataFrame]:
-        """Fetch stock data with fallback sources"""
+        """Fetch stock data with smart caching and error handling"""
         try:
             logger.info(f"Fetching {timeframe} data for {ticker}")
             
-            # Get appropriate time period
-            period = StockDataService.PERIODS.get(timeframe)
-            if not period:
-                logger.error(f"Invalid timeframe: {timeframe}")
-                return None
+            start_date, end_date = StockDataService.get_date_range(timeframe)
+            
+            # Check cache first
+            cached_data = StockDataService._cache.get_cached_data(ticker, start_date, end_date)
+            if cached_data is not None and not cached_data.empty:
+                logger.info(f"Using cached data for {ticker}")
+                return cached_data
+            
+            # Check if we have partial data that needs updating
+            cached_range = StockDataService._cache.get_data_range(ticker)
+            if cached_range:
+                cached_start, cached_end = cached_range
                 
-            # Try YFinance first
-            df = StockDataService._retry_with_backoff(
-                StockDataService._fetch_from_yfinance,
-                ticker,
-                period,
-                max_attempts=2
-            )
-            
-            # If YFinance fails, try alternative source
-            if df is None:
-                end_date = datetime.now()
-                if period == 'max':
-                    start_date = end_date - timedelta(days=3650)  # 10 years
-                else:
-                    days = {'6mo': 180, '1y': 365, '3y': 1095, '5y': 1825}
-                    start_date = end_date - timedelta(days=days[period])
+                # If we need older data
+                if start_date < cached_start:
+                    old_data = StockDataService._fetch_from_yfinance(
+                        ticker,
+                        start=start_date,
+                        end=cached_start - timedelta(days=1)
+                    )
+                    if old_data is not None:
+                        StockDataService._cache.update_partial_data(
+                            ticker, old_data, start_date, cached_start - timedelta(days=1)
+                        )
                 
-                df = StockDataService._retry_with_backoff(
-                    StockDataService._fetch_from_alternative,
-                    ticker,
-                    start_date,
-                    end_date,
-                    max_attempts=2
-                )
+                # If we need newer data
+                if end_date > cached_end:
+                    new_data = StockDataService._fetch_from_yfinance(
+                        ticker,
+                        start=cached_end + timedelta(days=1),
+                        end=end_date
+                    )
+                    if new_data is not None:
+                        StockDataService._cache.update_partial_data(
+                            ticker, new_data, cached_end + timedelta(days=1), end_date
+                        )
+                
+                # Get complete dataset from cache
+                return StockDataService._cache.get_cached_data(ticker, start_date, end_date)
             
+            # Fetch complete new dataset
+            df = StockDataService._fetch_from_yfinance(ticker, timeframe)
             if df is None:
-                logger.error(f"No data returned for {ticker}")
-                return None
+                df = StockDataService._fetch_from_alternative(ticker, start_date, end_date)
             
-            # Process the dataframe
-            df.index = pd.to_datetime(df.index)
-            df.sort_index(inplace=True)
+            if df is not None and not df.empty:
+                df = StockDataService._process_dataframe(df)
+                StockDataService._cache.update_stock_data(ticker, df)
+                return df
             
-            # Standardize column names
-            column_map = {
-                'Open': 'Open',
-                'High': 'High',
-                'Low': 'Low',
-                'Close': 'Close',
-                'Volume': 'Volume',
-                'Adj Close': 'Adj Close',
-                'Adj. Close': 'Adj Close',  # For alternative source
-                'Adj. Volume': 'Volume'      # For alternative source
-            }
-            df.rename(columns=column_map, inplace=True)
-            
-            # Ensure all required columns exist
-            required_columns = ['Open', 'High', 'Low', 'Close', 'Volume']
-            if not all(col in df.columns for col in required_columns):
-                logger.error(f"Missing required columns in data for {ticker}")
-                return None
-            
-            logger.info(f"Successfully processed data. Shape: {df.shape}")
-            return df
+            return None
             
         except Exception as e:
             logger.error(f"Error fetching stock data: {str(e)}")
             return None
-    
+
     @staticmethod
     def get_company_overview(ticker: str) -> Dict[str, Any]:
-        """Get company overview with multiple data source attempts"""
+        """Get company overview with caching"""
         try:
+            cached_info = StockDataService._cache.get_cached_company_info(ticker)
+            if cached_info:
+                return cached_info
+                
             stock = yf.Ticker(ticker)
-            
-            # Try to get company info from primary source (e.g., Yahoo Finance)
             info = StockDataService._retry_with_backoff(
                 lambda: stock.info,
                 max_attempts=2
             )
             
-            # Fallback in case of missing data
             if not info:
-                logger.warning("Failed to get detailed info, trying alternative source")
+                logger.warning("Failed to get detailed info, using alternative source")
                 try:
-                    end_date = datetime.now()
-                    start_date = end_date - timedelta(days=30)
-                    df = web.DataReader(ticker, 'stooq', start_date, end_date)
-                    
+                    df = StockDataService._fetch_from_alternative(
+                        ticker,
+                        datetime.now() - timedelta(days=30),
+                        datetime.now()
+                    )
                     if df is not None and not df.empty:
-                        latest_price = df['Close'].iloc[-1]
-                        avg_volume = df['Volume'].mean() if 'Volume' in df.columns else None
-                        market_cap = None
-                        shares_outstanding = info.get('sharesOutstanding') if info else None
-                        if shares_outstanding:
-                            market_cap = latest_price * shares_outstanding
-                        elif avg_volume:
-                            market_cap = StockDataService._calculate_market_cap(latest_price, avg_volume)
-                        
                         info = {
                             'longName': ticker.upper(),
-                            'marketCap': market_cap,
+                            'marketCap': StockDataService._calculate_market_cap(
+                                df['Close'].iloc[-1],
+                                df['Volume'].mean()
+                            ),
                             'fiftyTwoWeekHigh': df['High'].max(),
                             'fiftyTwoWeekLow': df['Low'].min()
                         }
@@ -269,32 +568,8 @@ class StockDataService:
                     logger.error(f"Alternative source error: {str(e)}")
                     info = {}
             
-            # Use `.get()` to safely access all attributes
-            overview = {
-                'Name': info.get('longName', ticker.upper()),
-                'Description': info.get('longBusinessSummary', 'Company description temporarily unavailable'),
-                'Sector': info.get('sector', 'N/A'),
-                'Industry': info.get('industry', 'N/A'),
-                'MarketCap': info.get('marketCap', 'N/A'),
-                'PERatio': info.get('trailingPE', 'N/A'),
-                'DividendYield': info.get('dividendYield', 'N/A'),
-                '52WeekHigh': info.get('fiftyTwoWeekHigh', 'N/A'),
-                '52WeekLow': info.get('fiftyTwoWeekLow', 'N/A'),
-                'Exchange': info.get('exchange', 'N/A'),  # Safe access
-                'Address': ', '.join(filter(None, [
-                    info.get('city', ''),
-                    info.get('state', ''),
-                    info.get('country', '')
-                ])) or 'N/A',
-                'FullTimeEmployees': info.get('fullTimeEmployees', 'N/A')
-            }
-            
-            # Format market cap and dividend yield
-            if overview['MarketCap'] != 'N/A':
-                overview['MarketCap'] = StockDataService._format_market_cap(float(overview['MarketCap']))
-            if overview['DividendYield'] != 'N/A' and overview['DividendYield'] is not None:
-                overview['DividendYield'] = f"{float(overview['DividendYield'])*100:.2f}%"
-            
+            overview = StockDataService._format_company_overview(info)
+            StockDataService._cache.update_company_info(ticker, overview)
             return overview
             
         except Exception as e:
@@ -302,55 +577,65 @@ class StockDataService:
             return {}
     
     @staticmethod
-    def get_fundamental_data(ticker: str) -> Dict[str, Any]:
-        """Get fundamental data with fallback options"""
-        try:
-            stock = yf.Ticker(ticker)
-            
-            # Try to get info with retries
-            info = StockDataService._retry_with_backoff(
-                lambda: stock.info,
-                max_attempts=2
-            )
-            
-            if not info:
-                # Try to calculate some basic metrics from price data
-                try:
-                    end_date = datetime.now()
-                    start_date = end_date - timedelta(days=365)
-                    df = web.DataReader(ticker, 'stooq', start_date, end_date)
-                    if not df.empty:
-                        returns = df['Close'].pct_change()
-                        beta = returns.std() * np.sqrt(252)  # Simple volatility as beta proxy
-                        avg_volume = df['Volume'].mean()
-                        latest_price = df['Close'].iloc[-1]
-                        market_cap = StockDataService._calculate_market_cap(
-                            latest_price, avg_volume
-                        )
-                        return {
-                            'pe_ratio': None,
-                            'industry_pe': None,
-                            'market_cap': market_cap,
-                            'dividend_yield': None,
-                            'beta': beta
-                        }
-                except Exception:
-                    pass
-            
-            return {
-                'pe_ratio': info.get('trailingPE'),
-                'industry_pe': info.get('industryPE'),
-                'market_cap': info.get('marketCap'),
-                'dividend_yield': info.get('dividendYield'),
-                'beta': info.get('beta')
-            }
-            
-        except Exception as e:
-            logger.error(f"Error getting fundamental data: {str(e)}")
-            return {
-                'pe_ratio': None,
-                'industry_pe': None,
-                'market_cap': None,
-                'dividend_yield': None,
-                'beta': None
-            }
+    def _format_company_overview(info: Dict) -> Dict:
+        """Format raw company info into standardized overview"""
+        return {
+            'Name': info.get('longName', 'N/A'),
+            'Description': info.get('longBusinessSummary', 'Company description unavailable'),
+            'Sector': info.get('sector', 'N/A'),
+            'Industry': info.get('industry', 'N/A'),
+            'MarketCap': StockDataService._format_market_cap(info.get('marketCap')),
+            'PERatio': info.get('trailingPE', 'N/A'),
+            'DividendYield': f"{float(info.get('dividendYield', 0))*100:.2f}%" if info.get('dividendYield') else 'N/A',
+            '52WeekHigh': info.get('fiftyTwoWeekHigh', 'N/A'),
+            '52WeekLow': info.get('fiftyTwoWeekLow', 'N/A'),
+            'Exchange': info.get('exchange', 'N/A'),
+            'Address': ', '.join(filter(None, [
+                info.get('city', ''),
+                info.get('state', ''),
+                info.get('country', '')
+            ])) or 'N/A',
+            'FullTimeEmployees': info.get('fullTimeEmployees', 'N/A')
+        }
+
+    @staticmethod
+    def _format_market_cap(market_cap: Optional[float]) -> str:
+        """Format market cap with appropriate suffix"""
+        if not market_cap:
+            return 'N/A'
+        if market_cap >= 1e12:
+            return f"${market_cap/1e12:.2f}T"
+        if market_cap >= 1e9:
+            return f"${market_cap/1e9:.2f}B"
+        if market_cap >= 1e6:
+            return f"${market_cap/1e6:.2f}M"
+        return f"${market_cap:.2f}"
+
+    @staticmethod
+    def _calculate_market_cap(price: float, volume: float) -> float:
+        """Estimate market cap from price and volume"""
+        return price * (volume * 30)  # Rough estimation using monthly volume
+
+    @staticmethod
+    def _process_dataframe(df: pd.DataFrame) -> pd.DataFrame:
+        """Standardize DataFrame format"""
+        df.index = pd.to_datetime(df.index)
+        df.sort_index(inplace=True)
+        
+        column_map = {
+            'Open': 'Open',
+            'High': 'High',
+            'Low': 'Low',
+            'Close': 'Close',
+            'Volume': 'Volume',
+            'Adj Close': 'Adj Close',
+            'Adj. Close': 'Adj Close',
+            'Adj. Volume': 'Volume'
+        }
+        df.rename(columns=column_map, inplace=True)
+        
+        required_columns = ['Open', 'High', 'Low', 'Close', 'Volume']
+        if not all(col in df.columns for col in required_columns):
+            raise ValueError("Missing required columns")
+        
+        return df

@@ -13,13 +13,13 @@ class TechnicalIndicators:
     @staticmethod
     def calculate_moving_averages(df: pd.DataFrame) -> pd.DataFrame:
         """Calculate various moving averages"""
-        df['SMA_20'] = df['Close'].rolling(window=20).mean()
-        df['SMA_50'] = df['Close'].rolling(window=50).mean()
-        df['SMA_200'] = df['Close'].rolling(window=200).mean()
+        df['SMA_20'] = df['Adj Close'].rolling(window=20).mean()
+        df['SMA_50'] = df['Adj Close'].rolling(window=50).mean()
+        df['SMA_200'] = df['Adj Close'].rolling(window=200).mean()
         
         # Add MACD
-        exp1 = df['Close'].ewm(span=12, adjust=False).mean()
-        exp2 = df['Close'].ewm(span=26, adjust=False).mean()
+        exp1 = df['Adj Close'].ewm(span=12, adjust=False).mean()
+        exp2 = df['Adj Close'].ewm(span=26, adjust=False).mean()
         df['MACD'] = exp1 - exp2
         df['Signal_Line'] = df['MACD'].ewm(span=9, adjust=False).mean()
         df['MACD_Histogram'] = df['MACD'] - df['Signal_Line']
@@ -29,8 +29,8 @@ class TechnicalIndicators:
     @staticmethod
     def calculate_bollinger_bands(df: pd.DataFrame) -> pd.DataFrame:
         """Calculate Bollinger Bands"""
-        df['BB_middle'] = df['Close'].rolling(window=20).mean()
-        std = df['Close'].rolling(window=20).std()
+        df['BB_middle'] = df['Adj Close'].rolling(window=20).mean()
+        std = df['Adj Close'].rolling(window=20).std()
         df['BB_upper'] = df['BB_middle'] + 2 * std
         df['BB_lower'] = df['BB_middle'] - 2 * std
         return df
@@ -38,7 +38,7 @@ class TechnicalIndicators:
     @staticmethod
     def calculate_rsi(df: pd.DataFrame) -> pd.DataFrame:
         """Calculate Relative Strength Index"""
-        delta = df['Close'].diff()
+        delta = df['Adj Close'].diff()
         gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
         loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
         rs = gain / loss
@@ -49,8 +49,8 @@ class TechnicalIndicators:
     def calculate_atr(df: pd.DataFrame, period: int = 14) -> pd.DataFrame:
         """Calculate Average True Range"""
         high_low = df['High'] - df['Low']
-        high_close = np.abs(df['High'] - df['Close'].shift())
-        low_close = np.abs(df['Low'] - df['Close'].shift())
+        high_close = np.abs(df['High'] - df['Adj Close'].shift())
+        low_close = np.abs(df['Low'] - df['Adj Close'].shift())
         
         ranges = pd.concat([high_low, high_close, low_close], axis=1)
         true_range = np.max(ranges, axis=1)
@@ -60,7 +60,7 @@ class TechnicalIndicators:
     @staticmethod
     def calculate_on_balance_volume(df: pd.DataFrame) -> pd.DataFrame:
         """Calculate On Balance Volume"""
-        df['OBV'] = (np.sign(df['Close'].diff()) * df['Volume']).fillna(0).cumsum()
+        df['OBV'] = (np.sign(df['Adj Close'].diff()) * df['Volume']).fillna(0).cumsum()
         return df
 
     @staticmethod
@@ -72,7 +72,7 @@ class TechnicalIndicators:
             benchmark_returns: Optional benchmark returns (e.g., S&P 500)
         """
         # Calculate daily returns
-        df['Daily_Return'] = df['Close'].pct_change()
+        df['Daily_Return'] = df['Adj Close'].pct_change()
         
         # Annualized Volatility
         df['Volatility'] = df['Daily_Return'].rolling(window=21).std() * np.sqrt(TechnicalIndicators.TRADING_DAYS)
@@ -93,8 +93,8 @@ class TechnicalIndicators:
         )
         
         # Maximum Drawdown
-        rolling_max = df['Close'].rolling(window=252, min_periods=1).max()
-        daily_drawdown = df['Close']/rolling_max - 1
+        rolling_max = df['Adj Close'].rolling(window=252, min_periods=1).max()
+        daily_drawdown = df['Adj Close']/rolling_max - 1
         df['Max_Drawdown'] = daily_drawdown.rolling(window=252, min_periods=1).min()
         
         # Value at Risk (95% confidence)
@@ -156,7 +156,7 @@ class TechnicalIndicators:
         """Calculate various performance metrics"""
         df_yearly = df.resample('Y').agg({
             'Open': 'first',
-            'Close': 'last',
+            'Adj Close': 'last',
             'High': 'max',
             'Low': 'min',
             'Volume': 'sum',
@@ -168,7 +168,7 @@ class TechnicalIndicators:
         })
         
         df_yearly['Year'] = df_yearly.index.year
-        df_yearly['Return (%)'] = ((df_yearly['Close'] - df_yearly['Open']) / df_yearly['Open'] * 100).round(2)
+        df_yearly['Return (%)'] = ((df_yearly['Adj Close'] - df_yearly['Open']) / df_yearly['Open'] * 100).round(2)
         df_yearly['Max Drawdown (%)'] = (df_yearly['Max_Drawdown'] * 100).round(2)
         df_yearly['Volatility (%)'] = (df_yearly['Volatility'] * 100).round(2)
         
@@ -199,9 +199,9 @@ class TechnicalIndicators:
             signals.append(('RSI', 'Oversold', f'RSI at {latest["RSI"]:.1f}'))
         
         # Bollinger Bands Signal
-        if latest['Close'] > latest['BB_upper']:
+        if latest['Adj Close'] > latest['BB_upper']:
             signals.append(('BB', 'Overbought', 'Price above upper band'))
-        elif latest['Close'] < latest['BB_lower']:
+        elif latest['Adj Close'] < latest['BB_lower']:
             signals.append(('BB', 'Oversold', 'Price below lower band'))
         
         # Trend Analysis
