@@ -72,14 +72,7 @@ class StockDataService:
     
     @staticmethod
     def _format_market_cap(market_cap: float) -> str:
-        """Format market cap with appropriate suffix and precision
-        
-        Args:
-            market_cap (float): Raw market cap value
-            
-        Returns:
-            str: Formatted market cap string (e.g., "$1.23T")
-        """
+        """Format market cap with appropriate suffix and precision"""
         if market_cap >= 1e12:
             return f"${market_cap/1e12:.2f}T"
         elif market_cap >= 1e9:
@@ -90,23 +83,30 @@ class StockDataService:
             return f"${market_cap:.2f}"
     
     @staticmethod
-    def _calculate_market_cap(price: float, volume: float, shares_outstanding: Optional[float] = None) -> float:
-        """Calculate market cap using the most accurate available data
+    def _calculate_market_cap(price: float, volume: float, shares_outstanding: Optional[float] = None) -> Optional[float]:
+        """
+        Calculate market cap using the most accurate available data
         
         Args:
             price (float): Current stock price
             volume (float): Trading volume
             shares_outstanding (float, optional): Number of shares outstanding
-            
+        
         Returns:
-            float: Calculated market cap
+            float: Calculated market cap if data is available; None if unavailable.
         """
-        if shares_outstanding:
+        # Primary Method: Use price * shares_outstanding if shares outstanding data is available
+        if shares_outstanding is not None:
             return price * shares_outstanding
-        else:
-            # Fallback to a more conservative estimate using average daily volume
-            # This is still an approximation but better than using single day volume
-            return price * (volume * 30)  # Using monthly volume as a proxy
+
+        # Fallback Method: Use price * (average monthly volume) as a proxy
+        # This assumes volume is daily; adjust if volume represents another period.
+        if volume is not None:
+            monthly_volume = volume * 30  # Using monthly volume as a fallback proxy
+            return price * monthly_volume
+
+        # If no reliable data is available, return None
+        return None
     
     @staticmethod
     def validate_ticker(ticker: str) -> Tuple[bool, str]:
