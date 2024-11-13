@@ -170,8 +170,6 @@ class StockDataService:
                 logger.error(f"Invalid timeframe: {timeframe}")
                 return None
                 
-            logger.debug(f"Using period: {period}")
-            
             # Try YFinance first
             df = StockDataService._retry_with_backoff(
                 StockDataService._fetch_from_yfinance,
@@ -230,40 +228,39 @@ class StockDataService:
         except Exception as e:
             logger.error(f"Error fetching stock data: {str(e)}")
             return None
-
+    
     @staticmethod
     def get_company_overview(ticker: str) -> Dict[str, Any]:
         """Get company overview with multiple data source attempts"""
         try:
             stock = yf.Ticker(ticker)
             
-            # Try to get info with retries
+            # Try to get company info from primary source (e.g., Yahoo Finance)
             info = StockDataService._retry_with_backoff(
                 lambda: stock.info,
                 max_attempts=2
             )
             
-            # If YFinance fails, try to get basic info from alternative source
+            # Fallback in case of missing data
             if not info:
                 logger.warning("Failed to get detailed info, trying alternative source")
                 try:
                     end_date = datetime.now()
                     start_date = end_date - timedelta(days=30)
                     df = web.DataReader(ticker, 'stooq', start_date, end_date)
-                    if not df.empty:
-                        # Calculate market cap using average volume over the period
-                        avg_volume = df['Volume'].mean()
+                    
+                    if df is not None and not df.empty:
                         latest_price = df['Close'].iloc[-1]
-                        market_cap = StockDataService._calculate_market_cap(
-                            latest_price, avg_volume
-                        )
+                        avg_volume = df['Volume'].mean() if 'Volume' in df.columns else None
+                        market_cap = None
+                        shares_outstanding = info.get('sharesOutstanding') if info else None
+                        if shares_outstanding:
+                            market_cap = latest_price * shares_outstanding
+                        elif avg_volume:
+                            market_cap = StockDataService._calculate_market_cap(latest_price, avg_volume)
                         
                         info = {
                             'longName': ticker.upper(),
-                            'shortName': ticker.upper(),
-                            'longBusinessSummary': 'Company information temporarily unavailable',
-                            'sector': 'N/A',
-                            'industry': 'N/A',
                             'marketCap': market_cap,
                             'fiftyTwoWeekHigh': df['High'].max(),
                             'fiftyTwoWeekLow': df['Low'].min()
@@ -272,9 +269,9 @@ class StockDataService:
                     logger.error(f"Alternative source error: {str(e)}")
                     info = {}
             
-            # Extract and format information
+            # Use `.get()` to safely access all attributes
             overview = {
-                'Name': info.get('longName', info.get('shortName', ticker.upper())),
+                'Name': info.get('longName', ticker.upper()),
                 'Description': info.get('longBusinessSummary', 'Company description temporarily unavailable'),
                 'Sector': info.get('sector', 'N/A'),
                 'Industry': info.get('industry', 'N/A'),
@@ -283,7 +280,7 @@ class StockDataService:
                 'DividendYield': info.get('dividendYield', 'N/A'),
                 '52WeekHigh': info.get('fiftyTwoWeekHigh', 'N/A'),
                 '52WeekLow': info.get('fiftyTwoWeekLow', 'N/A'),
-                'Exchange': info.get('exchange', 'N/A'),
+                'Exchange': info.get('exchange', 'N/A'),  # Safe access
                 'Address': ', '.join(filter(None, [
                     info.get('city', ''),
                     info.get('state', ''),
@@ -292,11 +289,9 @@ class StockDataService:
                 'FullTimeEmployees': info.get('fullTimeEmployees', 'N/A')
             }
             
-            # Format market cap using the new helper method
+            # Format market cap and dividend yield
             if overview['MarketCap'] != 'N/A':
                 overview['MarketCap'] = StockDataService._format_market_cap(float(overview['MarketCap']))
-            
-            # Format dividend yield
             if overview['DividendYield'] != 'N/A' and overview['DividendYield'] is not None:
                 overview['DividendYield'] = f"{float(overview['DividendYield'])*100:.2f}%"
             
