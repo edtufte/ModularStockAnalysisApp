@@ -188,7 +188,7 @@ class AnalysisService:
             
             # Calculate final recommendation
             confidence = (total_score / max_score * 100) if max_score > 0 else 0
-            recommendation = AnalysisService._get_recommendation(
+            recommendation = AnalysisService.get_recommendation(
                 confidence, risk_signals
             )
             
@@ -344,7 +344,7 @@ class AnalysisService:
         }
     
     @staticmethod
-    def _get_recommendation(
+    def get_recommendation(
         confidence: float,
         risk_signals: List[str]
     ) -> Dict[str, str]:
@@ -394,13 +394,14 @@ class AnalysisService:
             return 'max'
     
     @staticmethod
-    def run_portfolio_backtesting(holdings: List[Dict], start_date: str, end_date: str) -> Dict:
+    def run_portfolio_backtesting(holdings: List[Dict], start_date: str, end_date: str, benchmark_ticker: str = 'SPY') -> Dict:
         """Run backtesting analysis on a portfolio
         
         Args:
             holdings: List of dictionaries containing 'ticker' and 'allocation'
             start_date: Start date for backtesting period
             end_date: End date for backtesting period
+            benchmark_ticker: Ticker symbol for benchmark (default: 'SPY')
             
         Returns:
             Dict containing backtest results including returns, risk metrics, etc.
@@ -428,7 +429,7 @@ class AnalysisService:
                 logger.info(f"Fetching data for {ticker} with {allocation*100}% allocation")
                 
                 # Fetch the data
-                df = StockDataService.fetch_stock_data(ticker, period)
+                df = StockDataService().fetch_stock_data(ticker, period)
                 
                 if df is not None and not df.empty:
                     # Store only the Adj Close prices and allocation
@@ -460,11 +461,16 @@ class AnalysisService:
             # Calculate cumulative returns
             portfolio_cumulative = (1 + portfolio_returns).cumprod()
             
-            # Get benchmark (S&P 500) data
-            benchmark_df = StockDataService.fetch_stock_data("SPY", period)
+            # Get benchmark data
+            benchmark_df = StockDataService().fetch_stock_data(benchmark_ticker, period)
             benchmark_returns = benchmark_df['Adj Close'].pct_change()
             benchmark_returns = benchmark_returns[start_date_obj:end_date_obj]
             benchmark_cumulative = (1 + benchmark_returns).cumprod()
+
+            # Store the values for plotting
+            dates = benchmark_returns.index
+            portfolio_values = portfolio_cumulative
+            benchmark_values = benchmark_cumulative
             
             # Calculate metrics
             total_return = portfolio_cumulative.iloc[-1] - 1
@@ -494,6 +500,9 @@ class AnalysisService:
             results = {
                 "portfolio_return": total_return,
                 "benchmark_return": benchmark_return,
+                "dates": dates,
+                "portfolio_values": portfolio_values,
+                "benchmark_values": benchmark_values,
                 "alpha": alpha,
                 "beta": beta,
                 "sharpe_ratio": sharpe_ratio,
@@ -548,7 +557,7 @@ class AnalysisService:
         total_return = (1 + portfolio_returns).prod() - 1
         
         # Get S&P 500 as benchmark
-        benchmark_df = StockDataService.fetch_stock_data("SPY", "1y")
+        benchmark_df = StockDataService().fetch_stock_data("SPY", "1y")
         benchmark_returns = benchmark_df["Close"].pct_change()
         benchmark_total_return = (1 + benchmark_returns).prod() - 1
         

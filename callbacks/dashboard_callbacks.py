@@ -1,4 +1,5 @@
 # callbacks/dashboard_callbacks.py
+import dash
 from dash.dependencies import Input, Output, State, MATCH, ALL
 from dash.exceptions import PreventUpdate
 from dash import html, callback_context
@@ -16,112 +17,138 @@ from components.charts import ChartComponents
 from technical_indicators import TechnicalIndicators
 
 class DashboardCallbacks:
-    """Class for managing dashboard callbacks with optimized data handling"""
+    """Class for managing dashboard callbacks with improved refresh handling"""
     
-    # Class-level cache for benchmark data
-    _benchmark_cache = {}
+    def __init__(self):
+        self._data_cache = {}
+        self._last_update = {}
+        self.logger = logging.getLogger(__name__)
     
-    @staticmethod
-    @lru_cache(maxsize=10)
-    def _get_cached_benchmark(benchmark_ticker: str, timeframe: str) -> Optional[pd.DataFrame]:
-        """Get cached benchmark data with LRU caching"""
-        cache_key = f"{benchmark_ticker}_{timeframe}"
-        if cache_key in DashboardCallbacks._benchmark_cache:
-            return DashboardCallbacks._benchmark_cache[cache_key]
-        return None
-
-    @staticmethod
-    def _cache_benchmark(benchmark_ticker: str, timeframe: str, df: pd.DataFrame):
-        """Cache benchmark data"""
-        cache_key = f"{benchmark_ticker}_{timeframe}"
-        DashboardCallbacks._benchmark_cache[cache_key] = df
-
-    @staticmethod
-    def _should_update_data(current_data: Optional[pd.DataFrame], 
-                          new_timeframe: str, 
-                          old_timeframe: str) -> bool:
-        """Determine if data needs to be updated based on timeframe change"""
-        if current_data is None or current_data.empty:
+    def should_refresh_data(self, ticker: str, timeframe: str, cached_data: Optional[pd.DataFrame] = None) -> bool:
+        """Determine if data should be refreshed based on cache and market hours"""
+        if cached_data is None:
             return True
             
-        time_periods = {
-            '6mo': 180,
-            '1y': 365,
-            '3y': 1095,
-            '5y': 1825,
-            'max': 3650
+        now = datetime.now()
+        market_open = now.replace(hour=9, minute=30, second=0, microsecond=0)
+        market_close = now.replace(hour=16, minute=0, second=0, microsecond=0)
+        
+        # Always refresh during market hours
+        if market_open <= now <= market_close and now.weekday() < 5:
+            return True
+            
+        # Check last data point
+        last_data_time = cached_data.index[-1]
+        data_age = now - last_data_time
+        
+        # Refresh if data is too old based on timeframe
+        refresh_thresholds = {
+            '6mo': timedelta(hours=1),
+            '1y': timedelta(hours=4),
+            '3y': timedelta(days=1),
+            '5y': timedelta(days=1),
+            'max': timedelta(days=7)
         }
         
-        new_days = time_periods[new_timeframe]
-        old_days = time_periods[old_timeframe] if old_timeframe else 0
-        
-        if new_days <= old_days:
-            return False
-            
-        oldest_date = current_data.index.min()
-        required_start = datetime.now() - timedelta(days=new_days)
-        
-        return oldest_date > required_start
+        return data_age > refresh_thresholds.get(timeframe, timedelta(hours=1))
 
-    @staticmethod
-    def register_callbacks(app):
-        """Register all callbacks for the dashboard"""
+    def register_callbacks(self, app):
+        """Register all callbacks for the dashboard with improved refresh handling"""
         
         @app.callback(
-            [Output('ticker-error', 'children'),
-             Output('main-content', 'style'),
+            [Output('benchmark-dropdown', 'value'),
+             Output('benchmark-dropdown-backtesting', 'value')],
+            [Input('analyze-button', 'n_clicks'),
+             Input('stock-input', 'n_submit'),
+             Input('timeframe-dropdown', 'value')],
+            [State('benchmark-dropdown', 'value'),
+             State('user-id', 'data')]
+        )
+        def refresh_benchmark_data(n_clicks, n_submit, timeframe, current_benchmark, user_id):
+            """Refresh benchmark data when analyze is clicked"""
+            ctx = callback_context
+            if not ctx.triggered:
+                raise PreventUpdate
+                
+            trigger_id = ctx.triggered[0]['prop_id'].split('.')[0]
+            
+            if trigger_id in ['analyze-button', 'stock-input']:
+                # Update benchmark data
+                if current_benchmark:
+                    try:
+                        self.logger.info(f"Refreshing benchmark data for {current_benchmark}")
+                        StockDataService._cache.clear_cache(current_benchmark)  # Clear cache for benchmark
+                        
+                        # Fetch fresh benchmark data
+                        df = StockDataService.fetch_stock_data(current_benchmark, timeframe)
+                        if df is not None and not df.empty:
+                            self.logger.info(f"Successfully refreshed benchmark data for {current_benchmark}")
+                            # Keep the same benchmark selected
+                            return current_benchmark, current_benchmark
+                            
+                    except Exception as e:
+                        self.logger.error(f"Error refreshing benchmark data: {str(e)}")
+                        
+            raise PreventUpdate
+
+        @app.callback(
+            [Output('main-content', 'style'),
+             Output('ticker-error', 'children'),
              Output('benchmark-error', 'children')],
             [Input('analyze-button', 'n_clicks'),
              Input('stock-input', 'n_submit'),
+             Input('timeframe-dropdown', 'value'),
              Input('benchmark-dropdown', 'value')],
-            [State('stock-input', 'value'),
-             State('timeframe-dropdown', 'value')]
+            [State('stock-input', 'value')]
         )
-        def validate_input(n_clicks, n_submit, benchmark_ticker, ticker_value, timeframe):
-            if not n_clicks and not n_submit:
+        def validate_and_trigger_update(n_clicks, n_submit, timeframe, benchmark_ticker, ticker_value):
+            """Validate input and trigger data refresh when needed"""
+            ctx = callback_context
+            if not ctx.triggered:
                 raise PreventUpdate
+                
+            # Get the ID of the component that triggered the callback
+            trigger_id = ctx.triggered[0]['prop_id'].split('.')[0]
             
-            benchmark_error = ""
-            
-            # Basic input validation
-            if not ticker_value:
-                return "Please enter a ticker symbol", {'display': 'none'}, benchmark_error
-            
-            ticker_value = ticker_value.strip().upper()
-            if not all(c.isalpha() or c in '.-' for c in ticker_value):
-                return "Invalid ticker format", {'display': 'none'}, benchmark_error
-            
-            # Validate benchmark if provided
-            if benchmark_ticker:
+            if not ticker_value and trigger_id in ['analyze-button', 'stock-input']:
+                return {'display': 'none'}, "Please enter a ticker symbol", ""
+                
+            if ticker_value:
+                ticker_value = ticker_value.strip().upper()
+                
+                # Validate ticker format
+                if not all(c.isalpha() or c in '.-' for c in ticker_value):
+                    return {'display': 'none'}, "Invalid ticker format", ""
+                
                 try:
-                    # Check cache first
-                    cached_benchmark = DashboardCallbacks._get_cached_benchmark(benchmark_ticker, timeframe)
-                    if cached_benchmark is None:
-                        is_valid, error_msg = StockDataService.validate_ticker(benchmark_ticker)
+                    # Validate stock ticker
+                    is_valid, error_message = StockDataService.validate_ticker(ticker_value)
+                    if not is_valid:
+                        return {'display': 'none'}, error_message, ""
+                        
+                    # Validate benchmark if provided
+                    benchmark_error = ""
+                    if benchmark_ticker:
+                        is_valid, error_message = StockDataService.validate_ticker(benchmark_ticker)
                         if not is_valid:
-                            benchmark_error = f"Benchmark error: {error_msg}"
+                            benchmark_error = f"Benchmark error: {error_message}"
+                    
+                    return {'display': 'block'}, "", benchmark_error
+                    
                 except Exception as e:
-                    benchmark_error = f"Benchmark validation error: {str(e)}"
+                    return {'display': 'none'}, f"Error validating ticker: {str(e)}", ""
             
-            # Validate stock ticker
-            try:
-                is_valid, error_message = StockDataService.validate_ticker(ticker_value)
-                if is_valid:
-                    return "", {'display': 'block'}, benchmark_error
-            except Exception as e:
-                return f"Error validating ticker: {str(e)}", {'display': 'none'}, benchmark_error
-            
-            return error_message or "Unable to validate ticker", {'display': 'none'}, benchmark_error
+            return {'display': 'none'}, "", ""
 
         @app.callback(
-            [Output({'type': 'stock-table', 'user_id': MATCH}, 'children'),
-             Output({'type': 'stock-chart', 'user_id': MATCH}, 'figure'),
+            [Output({'type': 'stock-chart', 'user_id': MATCH}, 'figure'),
              Output({'type': 'volume-chart', 'user_id': MATCH}, 'figure'),
              Output({'type': 'technical-chart', 'user_id': MATCH}, 'figure'),
              Output({'type': 'current-price-card', 'user_id': MATCH}, 'children'),
              Output({'type': 'change-card', 'user_id': MATCH}, 'children'),
              Output({'type': 'volatility-card', 'user_id': MATCH}, 'children'),
              Output({'type': 'sharpe-ratio-card', 'user_id': MATCH}, 'children'),
+             Output({'type': 'stock-table', 'user_id': MATCH}, 'children'),
              Output({'type': 'recommendation-container', 'user_id': MATCH}, 'children'),
              Output({'type': 'company-overview', 'user_id': MATCH}, 'children'),
              Output({'type': 'benchmark-status', 'user_id': MATCH}, 'children')],
@@ -130,182 +157,142 @@ class DashboardCallbacks:
              Input('timeframe-dropdown', 'value'),
              Input('benchmark-dropdown', 'value')],
             [State('stock-input', 'value'),
-             State('user-id', 'data'),
-             State('timeframe-dropdown', 'value')]
+             State('user-id', 'data')]
         )
-        def update_dashboard(n_clicks, n_submit, timeframe, benchmark_ticker, ticker, user_id, prev_timeframe):
-            user_id = user_id or 'default'
-            if not (n_clicks or n_submit) or not ticker:
+        def update_dashboard(n_clicks, n_submit, timeframe, benchmark_ticker, ticker, user_id):
+            """Update dashboard with improved refresh handling"""
+            ctx = callback_context
+            if not ctx.triggered or not ticker:
                 raise PreventUpdate
                 
-            # Initialize error components
-            empty_fig, error_card, error_message = DashboardComponents.create_error_components()
-            empty_response = [
-                error_message,     # stock-table
-                empty_fig,         # stock-chart
-                empty_fig,         # volume-chart
-                empty_fig,         # technical-chart
-                error_card,        # current-price-card
-                error_card,        # change-card
-                error_card,        # volatility-card
-                error_card,        # sharpe-ratio-card
-                error_message,     # recommendation-container
-                error_message,     # company-overview
-                None              # benchmark-status
-            ]
+            trigger_id = ctx.triggered[0]['prop_id'].split('.')[0]
+            ticker = ticker.strip().upper()
             
             try:
-                ticker = ticker.strip().upper()
-                logger = logging.getLogger(__name__)
-                logger.info(f"Fetching data for {ticker} with timeframe {timeframe}")
+                # Clear cache if analyze button clicked
+                if trigger_id == 'analyze-button':
+                    self._data_cache.clear()
                 
-                # Check if we need to update the data based on timeframe change
-                should_update = DashboardCallbacks._should_update_data(
-                    StockDataService._cache.get_cached_data(ticker, *StockDataService._get_date_range(timeframe)),
-                    timeframe,
-                    prev_timeframe
-                )
+                # Get cached data
+                cache_key = f"{ticker}_{timeframe}"
+                cached_data = self._data_cache.get(cache_key)
                 
-                # Fetch stock data
-                df = StockDataService.fetch_stock_data(ticker, timeframe if should_update else prev_timeframe)
+                # Check if refresh needed
+                if self.should_refresh_data(ticker, timeframe, cached_data):
+                    self.logger.info(f"Refreshing data for {ticker}")
+                    df = StockDataService.fetch_stock_data(ticker, timeframe)
+                    if df is not None:
+                        self._data_cache[cache_key] = df
+                else:
+                    self.logger.info(f"Using cached data for {ticker}")
+                    df = cached_data
+                
                 if df is None or df.empty:
-                    logger.error(f"No data available for {ticker}")
-                    return empty_response
+                    raise ValueError(f"No data available for {ticker}")
                 
                 # Handle benchmark data
                 benchmark_df = None
-                benchmark_name = None
-                benchmark_status = None
-                
                 if benchmark_ticker:
                     try:
-                        # Try to get cached benchmark data first
-                        benchmark_df = DashboardCallbacks._get_cached_benchmark(benchmark_ticker, timeframe)
-                        
-                        if benchmark_df is None:
-                            benchmark_df = StockDataService.fetch_stock_data(benchmark_ticker, timeframe)
-                            if benchmark_df is not None and not benchmark_df.empty:
-                                DashboardCallbacks._cache_benchmark(benchmark_ticker, timeframe, benchmark_df)
+                        self.logger.info(f"Fetching fresh benchmark data for {benchmark_ticker}")
+                        # Clear cache for benchmark to ensure fresh data
+                        StockDataService._cache.clear_cache(benchmark_ticker)
+                        benchmark_df = StockDataService.fetch_stock_data(benchmark_ticker, timeframe)
                         
                         if benchmark_df is not None and not benchmark_df.empty:
-                            benchmark_info = StockDataService.get_company_overview(benchmark_ticker)
-                            benchmark_name = benchmark_info.get('Name', benchmark_ticker)
-                            
-                            benchmark_status = html.Div([
-                                html.I(className="fas fa-check-circle mr-2", style={"color": "green"}),
-                                html.Span(f"Benchmark loaded: {benchmark_name}")
-                            ], className="benchmark-status-success")
-                        else:
-                            raise ValueError("No benchmark data available")
-                            
+                            # Align benchmark data with stock data
+                            common_dates = df.index.intersection(benchmark_df.index)
+                            if len(common_dates) > 0:
+                                df = df.loc[common_dates]
+                                benchmark_df = benchmark_df.loc[common_dates]
+                                self.logger.info(f"Successfully aligned benchmark data with {len(common_dates)} data points")
+                            else:
+                                self.logger.warning("No overlapping dates between stock and benchmark data")
+                                benchmark_df = None
                     except Exception as e:
-                        logger.warning(f"Error fetching benchmark data: {str(e)}")
-                        benchmark_status = html.Div([
-                            html.I(className="fas fa-exclamation-circle mr-2", style={"color": "red"}),
-                            html.Span(f"Benchmark error: {str(e)}")
-                        ], className="benchmark-status-error")
+                        self.logger.error(f"Error fetching benchmark data: {str(e)}")
                         benchmark_df = None
-                else:
-                    benchmark_status = html.Div([
-                        html.I(className="fas fa-info-circle mr-2", style={"color": "gray"}),
-                        html.Span("No benchmark selected")
-                    ], className="benchmark-status-info")
                 
-                # Calculate indicators and generate visualizations
+                # Calculate indicators and metrics
                 df = TechnicalIndicators.calculate_all_indicators(
                     df,
                     benchmark_returns=benchmark_df['Close'].pct_change() if benchmark_df is not None else None
                 )
                 
-                # Generate all components
-                components = DashboardCallbacks._generate_dashboard_components(
-                    df, ticker, benchmark_df, benchmark_name
-                )
+                # Calculate performance metrics
+                df_yearly = TechnicalIndicators.calculate_performance_metrics(df)
                 
-                return components
+                # Get fundamental data and create components
+                fundamental_data = StockDataService.get_company_overview(ticker)
+                company_overview = StockDataService.get_company_overview(ticker)
+                
+                # Calculate price targets and recommendations
+                price_targets = AnalysisService.calculate_price_targets(ticker, df, fundamental_data)
+                recommendation = AnalysisService.generate_recommendation(price_targets, df)
+                
+                # Create charts
+                price_chart = ChartComponents.create_price_chart(df, ticker, benchmark_df, benchmark_ticker)
+                volume_chart = ChartComponents.create_volume_chart(df, ticker)
+                technical_chart = ChartComponents.create_technical_chart(df, ticker)
+                
+                # Calculate metrics
+                metrics = DashboardComponents._calculate_metrics(df, benchmark_df)
+                
+                return [
+                    price_chart,      # stock-chart
+                    volume_chart,     # volume-chart
+                    technical_chart,  # technical-chart
+                    metrics['price_card'],      # current-price-card
+                    metrics['change_card'],     # change-card
+                    metrics['volatility_card'], # volatility-card
+                    metrics['sharpe_card'],     # sharpe-ratio-card
+                    DashboardComponents.create_performance_table(df_yearly),  # stock-table
+                    DashboardComponents.create_recommendation_layout(  # recommendation-container
+                        recommendation, price_targets
+                    ),
+                    DashboardComponents.create_company_overview(company_overview),  # company-overview
+                    metrics.get('benchmark_status', html.Div())  # benchmark-status
+                ]
                 
             except Exception as e:
-                logger.error(f"Fatal error updating dashboard for {ticker}: {str(e)}")
-                return empty_response
+                self.logger.error(f"Error updating dashboard: {str(e)}")
+                empty_fig, error_card, error_message = DashboardComponents.create_error_components()
+                return [
+                    empty_fig,        # stock-chart
+                    empty_fig,        # volume-chart
+                    empty_fig,        # technical-chart
+                    error_card,       # current-price-card
+                    error_card,       # change-card
+                    error_card,       # volatility-card
+                    error_card,       # sharpe-ratio-card
+                    error_message,    # stock-table
+                    error_message,    # recommendation-container
+                    error_message,    # company-overview
+                    html.Div(        # benchmark-status
+                        [html.I(className="fas fa-exclamation-circle mr-2", 
+                               style={"color": "red"}),
+                         html.Span("Error loading data")],
+                        className="benchmark-status-error"
+                    )
+                ]
 
-    @staticmethod
-    def _generate_dashboard_components(
-        df: pd.DataFrame,
-        ticker: str,
-        benchmark_df: Optional[pd.DataFrame],
-        benchmark_name: Optional[str]
-    ) -> List[Any]:
-        """Generate all dashboard components"""
-        try:
-            # Calculate performance metrics
-            df_yearly = TechnicalIndicators.calculate_performance_metrics(df)
+        # Additional callback for interval-based refresh during market hours
+        @app.callback(
+            Output('refresh-trigger', 'children'),
+            [Input('refresh-interval', 'n_intervals')],
+            [State('stock-input', 'value'),
+             State('timeframe-dropdown', 'value')]
+        )
+        def handle_auto_refresh(n_intervals, ticker, timeframe):
+            if not ticker:
+                raise PreventUpdate
+                
+            ticker = ticker.strip().upper()
             
-            # Get fundamental data and company overview
-            fundamental_data = StockDataService.get_fundamental_data(ticker)
-            company_overview = StockDataService.get_company_overview(ticker)
-            company_section = DashboardComponents.create_company_overview(company_overview)
+            # Clear cache for current ticker during market hours
+            if self.should_refresh_data(ticker, timeframe):
+                cache_key = f"{ticker}_{timeframe}"
+                if cache_key in self._data_cache:
+                    del self._data_cache[cache_key]
             
-            # Calculate analysis and recommendations
-            price_targets = AnalysisService.calculate_price_targets(ticker, df, fundamental_data)
-            recommendation = AnalysisService.generate_recommendation(price_targets, df)
-            
-            # Create visualizations
-            price_chart = ChartComponents.create_price_chart(df, ticker, benchmark_df, benchmark_name)
-            volume_chart = ChartComponents.create_volume_chart(df, ticker)
-            technical_chart = ChartComponents.create_technical_chart(df, ticker)
-            
-            # Calculate metrics for cards
-            metrics = DashboardCallbacks._calculate_metrics(df, benchmark_df)
-            
-            return [
-                DashboardComponents.create_performance_table(df_yearly),  # stock-table
-                price_chart,        # stock-chart
-                volume_chart,       # volume-chart
-                technical_chart,    # technical-chart
-                metrics['price_card'],         # current-price-card
-                metrics['change_card'],        # change-card
-                metrics['volatility_card'],    # volatility-card
-                metrics['sharpe_card'],        # sharpe-ratio-card
-                DashboardComponents.create_recommendation_layout(
-                    recommendation, price_targets
-                ),  # recommendation-container
-                company_section,    # company-overview
-                metrics['benchmark_status']    # benchmark-status
-            ]
-            
-        except Exception as e:
-            logger.error(f"Error generating dashboard components: {str(e)}")
-            raise
-
-    @staticmethod
-    def _calculate_metrics(df: pd.DataFrame, benchmark_df: Optional[pd.DataFrame]) -> Dict[str, Any]:
-        """Calculate all metrics for dashboard cards"""
-        current_price = df['Adj Close'].iloc[-1]
-        price_change = ((df['Adj Close'].iloc[-1] / df['Adj Close'].iloc[0]) - 1) * 100
-        volatility = df['Volatility'].iloc[-1] * 100
-        
-        daily_returns = df['Adj Close'].pct_change()
-        sharpe_ratio = ((daily_returns.mean() * 252) - 0.02) / (daily_returns.std() * (252 ** 0.5))
-        
-        # Add benchmark comparison to change card if available
-        change_text = f"{price_change:.1f}%"
-        if benchmark_df is not None:
-            benchmark_change = ((benchmark_df['Adj Close'].iloc[-1] / benchmark_df['Adj Close'].iloc[0]) - 1) * 100
-            relative_performance = price_change - benchmark_change
-            change_text += (f" ({'+' if relative_performance > 0 else ''}{relative_performance:.1f}% "
-                        f"vs {benchmark_df.name})")
-        
-        return {
-            'price_card': DashboardComponents.create_metric_card(
-                "Current Price", f"${current_price:.2f}"
-            ),
-            'change_card': DashboardComponents.create_metric_card(
-                "Period Return", change_text
-            ),
-            'volatility_card': DashboardComponents.create_metric_card(
-                "Annualized Volatility", f"{volatility:.1f}%"
-            ),
-            'sharpe_card': DashboardComponents.create_metric_card(
-                "Sharpe Ratio", f"{sharpe_ratio:.2f}"
-            )
-        }
+            return ""

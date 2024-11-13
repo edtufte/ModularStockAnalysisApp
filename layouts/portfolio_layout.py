@@ -5,6 +5,10 @@ class PortfolioLayout:
     @staticmethod
     def create_layout():
         return html.Div([
+            # Add initialization trigger and store for portfolio updates
+            dcc.Store(id='portfolios-init-trigger', data=1),  # Will trigger on page load
+            dcc.Store(id='portfolio-update-trigger', data=1),  # Will trigger on updates
+            
             html.H2("Portfolio Management", className="dashboard-title"),
             
             # Create Portfolio Section
@@ -27,16 +31,61 @@ class PortfolioLayout:
                 ], className="input-container")
             ], className="section-container"),
             
-            # Existing Portfolios Section
+            # Portfolio Management Section
             html.Div([
-                html.H3("Existing Portfolios", className="section-subtitle"),
-                dcc.Dropdown(
-                    id="portfolio-dropdown",
-                    options=[],
-                    placeholder="Select a portfolio",
-                    className="dropdown"
-                ),
-                html.Div(id="portfolio-details", className="portfolio-details")
+                html.H3("Manage Portfolios", className="section-subtitle"),
+                html.Div([
+                    # Portfolio Selection
+                    html.Div([
+                        dcc.Dropdown(
+                            id="portfolio-dropdown",
+                            options=[],
+                            placeholder="Select a portfolio",
+                            className="dropdown"
+                        ),
+                        html.Div(
+                            style={
+                                'display': 'flex',
+                                'gap': '10px',
+                                'marginTop': '10px'
+                            },
+                            children=[
+                                html.Button(
+                                    "Delete Selected Portfolio",
+                                    id="delete-portfolio-button",
+                                    n_clicks=0,
+                                    className="delete-button",
+                                    style={
+                                        'backgroundColor': '#DC2626',
+                                        'color': 'white',
+                                        'border': 'none',
+                                        'padding': '8px 16px',
+                                        'borderRadius': '4px',
+                                        'cursor': 'pointer'
+                                    }
+                                ),
+                                html.Button(
+                                    "Clear All Portfolios",
+                                    id="clear-portfolios-button",
+                                    n_clicks=0,
+                                    className="clear-button",
+                                    style={
+                                        'backgroundColor': '#4B5563',
+                                        'color': 'white',
+                                        'border': 'none',
+                                        'padding': '8px 16px',
+                                        'borderRadius': '4px',
+                                        'cursor': 'pointer'
+                                    }
+                                )
+                            ]
+                        ),
+                        html.Div(id="delete-portfolio-message", className="message-container")
+                    ], className="portfolio-selection-container"),
+                    
+                    # Portfolio Details
+                    html.Div(id="portfolio-details", className="portfolio-details")
+                ], className="portfolio-management-container")
             ], className="section-container"),
             
             # Add Holding Section

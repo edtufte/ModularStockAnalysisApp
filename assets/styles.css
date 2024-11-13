@@ -542,6 +542,38 @@ body {
     }
 }
 
+/* Backtesting Styles */
+.backtesting-results-grid {
+    display: grid;
+    grid-template-columns: 1fr 2fr;
+    gap: 1.5rem;
+    margin-top: 1.5rem;
+}
+
+.backtesting-metrics {
+    background: white;
+    padding: 1.5rem;
+    border-radius: 0.5rem;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.backtesting-chart-container {
+    background: white;
+    padding: 1.5rem;
+    border-radius: 0.5rem;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.benchmark-selector {
+    margin: 1rem 0;
+}
+
+@media (max-width: 768px) {
+    .backtesting-results-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
 /* Print Styles */
 @media print {
     .dashboard-container {

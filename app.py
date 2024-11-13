@@ -10,6 +10,17 @@ from callbacks import portfolio_callbacks, backtesting_callbacks
 from services.database import Database
 from config.database import DB_NAME
 
+_db_instance = None
+
+def get_db():
+    """Singleton pattern for database access"""
+    global _db_instance
+    if _db_instance is None:
+        _db_instance = Database(DB_NAME)
+        _db_instance.create_tables()
+    return _db_instance
+
+# In app.py
 def create_app():
     """Create and configure the Dash application"""
     
@@ -26,11 +37,8 @@ def create_app():
     # Set up the server
     server = app.server
 
-    # Initialize database
-    db = Database(DB_NAME)
-    
-    # Create tables (this is safe to call multiple times)
-    db.create_tables()
+    # Create database
+    db = get_db()
     
     app.layout = html.Div([
         dcc.Store(id="user-id", storage_type="session", data=1),  # Default user ID
@@ -42,7 +50,8 @@ def create_app():
     ])
 
     # Register callbacks
-    DashboardCallbacks.register_callbacks(app)
+    dashboard_callbacks = DashboardCallbacks()  # Create instance
+    dashboard_callbacks.register_callbacks(app)  # Register callbacks using instance
     portfolio_callbacks.register_callbacks(app, db)
     backtesting_callbacks.register_callbacks(app, db)
 

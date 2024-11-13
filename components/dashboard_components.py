@@ -48,26 +48,25 @@ class DashboardComponents:
         
         return empty_fig, error_card, error_message
     
-    # Add this method to the DashboardComponents class in dashboard_components.py
-
     @staticmethod
     def create_company_overview(overview: Dict[str, Any]) -> html.Div:
-        """Create company overview section
-        
-        Args:
-            overview (Dict[str, Any]): Company overview data
-            
-        Returns:
-            html.Div: Company overview component
-        """
+        """Create company overview section with graceful fallbacks"""
         try:
-            if not overview:
-                return html.Div([
-                    html.Div([
-                        html.I(className="fas fa-exclamation-circle mr-2"),
-                        html.Span("Company information unavailable")
-                    ], className='error-content')
-                ], className='error-container')
+            # Ensure required fields exist with defaults
+            overview = {
+                'Name': overview.get('Name', 'N/A'),
+                'Exchange': overview.get('Exchange', 'N/A'),
+                'Sector': overview.get('Sector', 'N/A'),
+                'Industry': overview.get('Industry', 'N/A'),
+                'Description': overview.get('Description', 'Company description unavailable'),
+                'MarketCap': overview.get('MarketCap', 'N/A'),
+                'PERatio': overview.get('PERatio', 'N/A'),
+                'DividendYield': overview.get('DividendYield', 'N/A'),
+                '52WeekHigh': overview.get('52WeekHigh', 'N/A'),
+                '52WeekLow': overview.get('52WeekLow', 'N/A'),
+                'FullTimeEmployees': overview.get('FullTimeEmployees', 'N/A'),
+                'Address': overview.get('Address', 'N/A')
+            }
 
             return html.Div([
                 # Company Header
@@ -123,21 +122,24 @@ class DashboardComponents:
                     ], className='details-grid'),
                 ], className='details-section'),
                 
-                # Address Section
+                # Only show address if available
                 html.Div([
                     html.H4("Headquarters", className='section-subtitle'),
                     html.P(overview['Address'], className='company-address')
-                ], className='address-section'),
+                ], className='address-section') if overview['Address'] != 'N/A' else None,
                 
             ], className='company-overview-container')
             
         except Exception as e:
+            logging.error(f"Error creating company overview: {str(e)}")
+            # Provide minimal fallback view
             return html.Div([
                 html.Div([
-                    html.I(className="fas fa-exclamation-circle mr-2"),
-                    html.Span(f"Error creating company overview: {str(e)}")
-                ], className='error-content')
-            ], className='error-container')
+                    html.H2(overview.get('Name', 'Company Overview'), className='company-name'),
+                    html.P("Company information temporarily unavailable. Please try again later.",
+                        className='error-message')
+                ], className='company-overview-container')
+            ])
 
     @staticmethod
     def create_metric_card(title: str, value: str) -> html.Div:
@@ -544,3 +546,82 @@ class DashboardComponents:
                 return f"{number:.1f}"
         except Exception:
             return "N/A"
+
+    @staticmethod
+    def _calculate_metrics(df: pd.DataFrame, benchmark_df: Optional[pd.DataFrame] = None) -> Dict[str, Any]:
+        """Calculate all metrics for dashboard cards with improved error handling"""
+        try:
+            metrics = {}
+            
+            # Always calculate basic metrics
+            current_price = df['Adj Close'].iloc[-1]
+            price_change = ((df['Adj Close'].iloc[-1] / df['Adj Close'].iloc[0]) - 1) * 100
+            volatility = df['Volatility'].iloc[-1] * 100 if 'Volatility' in df else df['Adj Close'].pct_change().std() * np.sqrt(252) * 100
+            
+            daily_returns = df['Adj Close'].pct_change()
+            sharpe_ratio = ((daily_returns.mean() * 252) - 0.02) / (daily_returns.std() * (252 ** 0.5))
+            
+            # Base price text
+            change_text = f"{price_change:.1f}%"
+            
+            # Add benchmark comparison only if benchmark data is valid
+            if benchmark_df is not None and not benchmark_df.empty:
+                try:
+                    benchmark_change = ((benchmark_df['Adj Close'].iloc[-1] / benchmark_df['Adj Close'].iloc[0]) - 1) * 100
+                    relative_performance = price_change - benchmark_change
+                    
+                    # Get benchmark name with multiple fallbacks
+                    benchmark_name = getattr(benchmark_df, 'name', 'Market')
+                    
+                    change_text += (f" ({'+' if relative_performance > 0 else ''}{relative_performance:.1f}% "
+                                f"vs {benchmark_name})")
+                    
+                    # Add benchmark status if all benchmark calculations succeeded
+                    metrics['benchmark_status'] = html.Div([
+                        html.I(className="fas fa-check-circle mr-2", style={"color": "green"}),
+                        html.Span(f"Using {benchmark_name} as benchmark")
+                    ], className="benchmark-status-success")
+                except Exception as e:
+                    logging.warning(f"Error calculating benchmark metrics: {str(e)}")
+                    metrics['benchmark_status'] = html.Div([
+                        html.I(className="fas fa-exclamation-circle mr-2", style={"color": "orange"}),
+                        html.Span("Benchmark data incomplete")
+                    ], className="benchmark-status-warning")
+            else:
+                # No benchmark case
+                metrics['benchmark_status'] = html.Div([
+                    html.I(className="fas fa-info-circle mr-2", style={"color": "gray"}),
+                    html.Span("No benchmark selected")
+                ], className="benchmark-status-info")
+            
+            # Create metric cards
+            metrics.update({
+                'price_card': DashboardComponents.create_metric_card(
+                    "Current Price", f"${current_price:.2f}"
+                ),
+                'change_card': DashboardComponents.create_metric_card(
+                    "Period Return", change_text
+                ),
+                'volatility_card': DashboardComponents.create_metric_card(
+                    "Annualized Volatility", f"{volatility:.1f}%"
+                ),
+                'sharpe_card': DashboardComponents.create_metric_card(
+                    "Sharpe Ratio", f"{sharpe_ratio:.2f}"
+                )
+            })
+            
+            return metrics
+            
+        except Exception as e:
+            logging.error(f"Error calculating metrics: {str(e)}")
+            # Provide fallback metrics on error
+            return {
+                'price_card': DashboardComponents.create_metric_card("Current Price", "N/A"),
+                'change_card': DashboardComponents.create_metric_card("Period Return", "N/A"),
+                'volatility_card': DashboardComponents.create_metric_card("Volatility", "N/A"),
+                'sharpe_card': DashboardComponents.create_metric_card("Sharpe Ratio", "N/A"),
+                'benchmark_status': html.Div([
+                    html.I(className="fas fa-exclamation-circle mr-2", style={"color": "red"}),
+                    html.Span("Error calculating metrics")
+                ], className="benchmark-status-error")
+            }

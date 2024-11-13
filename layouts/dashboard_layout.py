@@ -26,6 +26,12 @@ class DashboardLayout:
     def create_layout(user_id: Optional[str] = None):
         """Create the main dashboard layout"""
         return html.Div([
+            dcc.Interval(
+                id='refresh-interval',
+                interval=60*1000,  # 1 minute in milliseconds
+                n_intervals=0
+            ),
+            html.Div(id='refresh-trigger'),  # Hidden div for refresh management
             # Header section
             DashboardLayout._create_header(),
             
