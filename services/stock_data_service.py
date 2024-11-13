@@ -193,14 +193,27 @@ class StockDataService:
             '5y': 1825,
             'max': 3650  # 10 years
         }
-        
-        if timeframe not in timeframe_days:
-            logger.warning(f"Invalid timeframe '{timeframe}', defaulting to '1y'")
-            timeframe = '1y'
-        
+
+        if timeframe in timeframe_days:
+            days = timeframe_days[timeframe]
+        else:
+            # Attempt to parse custom timeframe like 'Xmo' or 'Xy'
+            match = re.match(r"(\d+)(mo|y)", timeframe)
+            if match:
+                amount, unit = match.groups()
+                if unit == "mo":
+                    days = int(amount) * 30  # Approximate 1 month as 30 days
+                elif unit == "y":
+                    days = int(amount) * 365
+            else:
+                logger.warning(f"Invalid timeframe '{timeframe}', defaulting to '1y'")
+                days = timeframe_days['1y']
+
         end_date = datetime.now().replace(hour=23, minute=59, second=59, microsecond=999999)
-        start_date = end_date - timedelta(days=timeframe_days[timeframe])
-        while start_date.weekday() > 4:
+        start_date = end_date - timedelta(days=days)
+        
+        # Adjust start_date to the nearest previous weekday if it falls on a weekend
+        while start_date.weekday() > 4:  # 5 and 6 are Saturday and Sunday
             start_date -= timedelta(days=1)
 
         logger.debug(f"Calculated date range for {timeframe}: {start_date} to {end_date}")

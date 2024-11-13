@@ -1,7 +1,9 @@
 # components/dashboard_components.py
 
+import logging
 from dash import html
 from typing import Dict, Any, Tuple, List, Optional
+import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 
@@ -457,7 +459,7 @@ class DashboardComponents:
                 html.Thead(
                     html.Tr([
                         html.Th(col) for col in [
-                            'Year', 'Close', 'Return (%)',
+                            'Year', 'Adj Close', 'Return (%)',
                             'Max Drawdown (%)', 'Volume (M)'
                         ]
                     ])
@@ -465,7 +467,7 @@ class DashboardComponents:
                 html.Tbody([
                     html.Tr([
                         html.Td(row['Year']),
-                        html.Td(f"${row['Close']:.2f}"),
+                        html.Td(f"${row['Adj Close']:.2f}"),
                         html.Td(
                             f"{row['Return (%)']:.1f}%",
                             style={'color': 'green' if row['Return (%)'] > 0 else 'red'}
