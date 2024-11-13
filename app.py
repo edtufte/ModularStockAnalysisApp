@@ -1,3 +1,4 @@
+# app.py
 import dash
 from layouts.dashboard_layout import DashboardLayout
 from callbacks.dashboard_callbacks import DashboardCallbacks

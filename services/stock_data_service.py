@@ -1,165 +1,315 @@
 # services/stock_data_service.py
 import pandas as pd
 import numpy as np
-import requests
+import yfinance as yf
 import logging
 from typing import Optional, Dict, Any, Tuple
 from datetime import datetime, timedelta
-from config import secrets
+import requests
+import time
+from requests.exceptions import RequestException
+import pandas_datareader.data as web
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 class StockDataService:
-    """Service class for fetching and validating stock data using Alpha Vantage API"""
+    """Service class for fetching and validating stock data using multiple sources"""
     
-    TIME_SERIES_MAPPING = {
-        '6mo': 'TIME_SERIES_DAILY',
-        '1y': 'TIME_SERIES_DAILY',
-        '3y': 'TIME_SERIES_WEEKLY',
-        '5y': 'TIME_SERIES_WEEKLY',
-        'max': 'TIME_SERIES_MONTHLY'
+    PERIODS = {
+        '6mo': '6mo',
+        '1y': '1y',
+        '3y': '3y',
+        '5y': '5y',
+        'max': 'max'
     }
     
     @staticmethod
-    def _make_api_request(function: str, symbol: str, **kwargs) -> Optional[Dict]:
-        """Make request to Alpha Vantage API"""
-        params = {
-            'function': function,
-            'symbol': symbol,
-            'apikey': secrets.alpha_vantage_key,
-            **kwargs
-        }
-        
+    def _retry_with_backoff(func, *args, max_attempts=3, initial_delay=1, **kwargs):
+        """Helper method to retry operations with exponential backoff"""
+        for attempt in range(max_attempts):
+            try:
+                return func(*args, **kwargs)
+            except Exception as e:
+                if attempt == max_attempts - 1:
+                    raise e
+                delay = initial_delay * (2 ** attempt)
+                logger.warning(f"Attempt {attempt + 1} failed: {str(e)}. Retrying in {delay} seconds...")
+                time.sleep(delay)
+    
+    @staticmethod
+    def _fetch_from_yfinance(ticker: str, period: str) -> Optional[pd.DataFrame]:
+        """Fetch data from Yahoo Finance"""
         try:
-            response = requests.get(secrets.api_base_url, params=params)
-            response.raise_for_status()
-            data = response.json()
-            
-            if 'Error Message' in data:
-                logging.error(f"API Error: {data['Error Message']}")
-                return None
-                
-            return data
+            stock = yf.Ticker(ticker)
+            df = stock.history(period=period)
+            if df.empty:
+                raise ValueError("Empty dataset returned")
+            return df
         except Exception as e:
-            logging.error(f"API request failed: {str(e)}")
+            logger.error(f"YFinance error: {str(e)}")
             return None
     
     @staticmethod
-    def validate_ticker(ticker: str) -> Tuple[bool, Optional[str]]:
-        """Validate if the ticker exists"""
+    def _fetch_from_alternative(ticker: str, start_date: datetime, end_date: datetime) -> Optional[pd.DataFrame]:
+        """Fetch data from alternative source (pandas_datareader)"""
         try:
-            data = StockDataService._make_api_request(
-                'SYMBOL_SEARCH',
-                ticker
+            df = web.DataReader(
+                ticker,
+                'stooq',  # Using Stooq as alternative source
+                start_date,
+                end_date
             )
+            if df.empty:
+                raise ValueError("Empty dataset returned")
+            return df
+        except Exception as e:
+            logger.error(f"Alternative source error: {str(e)}")
+            return None
+    
+    @staticmethod
+    def validate_ticker(ticker: str) -> Tuple[bool, str]:
+        """Validate stock ticker symbol with multiple attempts and sources"""
+        try:
+            # Basic cleanups
+            ticker = ticker.strip().upper()
             
-            if not data or 'bestMatches' not in data:
-                return False, "Unable to validate ticker"
+            # Length check
+            if len(ticker) == 0:
+                return False, "Ticker symbol cannot be empty"
+            if len(ticker) > 6:
+                return False, "Ticker symbol too long"
                 
-            matches = data['bestMatches']
-            exact_match = next(
-                (m for m in matches if m['1. symbol'].upper() == ticker.upper()),
-                None
-            )
+            # Character validation
+            valid_chars = set("ABCDEFGHIJKLMNOPQRSTUVWXYZ.-")
+            if not all(char in valid_chars for char in ticker):
+                return False, "Ticker contains invalid characters"
+                
+            # Must start with a letter
+            if not ticker[0].isalpha():
+                return False, "Ticker must start with a letter"
             
-            if exact_match:
-                return True, None
-            return False, "Ticker not found"
+            # Try multiple data sources
+            try:
+                # Try yfinance first
+                stock = yf.Ticker(ticker)
+                info = StockDataService._retry_with_backoff(
+                    lambda: stock.info,
+                    max_attempts=2
+                )
+                if info and isinstance(info, dict):
+                    return True, ""
+            except Exception as e:
+                logger.warning(f"YFinance validation failed: {str(e)}")
+                
+            # Try alternative source
+            try:
+                end_date = datetime.now()
+                start_date = end_date - timedelta(days=5)
+                df = web.DataReader(ticker, 'stooq', start_date, end_date)
+                if not df.empty:
+                    return True, ""
+            except Exception as e:
+                logger.warning(f"Alternative source validation failed: {str(e)}")
+            
+            return False, "Unable to verify ticker existence"
             
         except Exception as e:
-            error_str = str(e).lower()
-            if 'timeout' in error_str:
-                return False, "Request timed out - please try again"
-            elif 'connection' in error_str:
-                return False, "Connection error - please check your internet connection"
-            else:
-                return False, "Unable to validate ticker"
+            return False, f"Error validating ticker: {str(e)}"
     
     @staticmethod
     def fetch_stock_data(ticker: str, timeframe: str) -> Optional[pd.DataFrame]:
-        """Fetch stock data and perform initial processing"""
+        """Fetch stock data with fallback sources"""
         try:
-            # Get appropriate time series function
-            function = StockDataService.TIME_SERIES_MAPPING.get(timeframe, 'TIME_SERIES_DAILY')
+            logger.info(f"Fetching {timeframe} data for {ticker}")
             
-            # Make API request
-            data = StockDataService._make_api_request(
-                function,
-                ticker,
-                outputsize='full'
-            )
-            
-            if not data:
-                return None
-            
-            # Get the time series data
-            time_series_key = next(
-                (k for k in data.keys() if 'Time Series' in k),
-                None
-            )
-            
-            if not time_series_key:
+            # Get appropriate time period
+            period = StockDataService.PERIODS.get(timeframe)
+            if not period:
+                logger.error(f"Invalid timeframe: {timeframe}")
                 return None
                 
-            # Convert to DataFrame
-            df = pd.DataFrame.from_dict(
-                data[time_series_key],
-                orient='index'
+            logger.debug(f"Using period: {period}")
+            
+            # Try YFinance first
+            df = StockDataService._retry_with_backoff(
+                StockDataService._fetch_from_yfinance,
+                ticker,
+                period,
+                max_attempts=2
             )
             
-            # Rename columns
-            df.columns = [col.split('. ')[1] for col in df.columns]
+            # If YFinance fails, try alternative source
+            if df is None:
+                end_date = datetime.now()
+                if period == 'max':
+                    start_date = end_date - timedelta(days=3650)  # 10 years
+                else:
+                    days = {'6mo': 180, '1y': 365, '3y': 1095, '5y': 1825}
+                    start_date = end_date - timedelta(days=days[period])
+                
+                df = StockDataService._retry_with_backoff(
+                    StockDataService._fetch_from_alternative,
+                    ticker,
+                    start_date,
+                    end_date,
+                    max_attempts=2
+                )
             
-            # Convert values to float
-            for col in df.columns:
-                df[col] = pd.to_numeric(df[col], errors='coerce')
+            if df is None:
+                logger.error(f"No data returned for {ticker}")
+                return None
             
-            # Filter based on timeframe
-            if timeframe != 'max':
-                months = int(timeframe.replace('mo', '').replace('y', '') * 12)
-                start_date = datetime.now() - timedelta(days=months * 30)
-                df = df[df.index >= start_date.strftime('%Y-%m-%d')]
-            
-            # Sort index
+            # Process the dataframe
+            df.index = pd.to_datetime(df.index)
             df.sort_index(inplace=True)
             
-            # Add adjusted close (Alpha Vantage daily adjusted could be used instead)
-            df['Adj Close'] = df['close']
+            # Standardize column names
+            column_map = {
+                'Open': 'Open',
+                'High': 'High',
+                'Low': 'Low',
+                'Close': 'Close',
+                'Volume': 'Volume',
+                'Adj Close': 'Adj Close',
+                'Adj. Close': 'Adj Close',  # For alternative source
+                'Adj. Volume': 'Volume'      # For alternative source
+            }
+            df.rename(columns=column_map, inplace=True)
             
-            # Rename columns to match existing code
-            df.rename(columns={
-                'open': 'Open',
-                'high': 'High',
-                'low': 'Low',
-                'close': 'Close',
-                'volume': 'Volume'
-            }, inplace=True)
+            # Ensure all required columns exist
+            required_columns = ['Open', 'High', 'Low', 'Close', 'Volume']
+            if not all(col in df.columns for col in required_columns):
+                logger.error(f"Missing required columns in data for {ticker}")
+                return None
             
+            logger.info(f"Successfully processed data. Shape: {df.shape}")
             return df
             
         except Exception as e:
-            logging.error(f"Error fetching stock data: {str(e)}")
+            logger.error(f"Error fetching stock data: {str(e)}")
             return None
+
+    @staticmethod
+    def get_company_overview(ticker: str) -> Dict[str, Any]:
+        """Get company overview with multiple data source attempts"""
+        try:
+            stock = yf.Ticker(ticker)
+            
+            # Try to get info with retries
+            info = StockDataService._retry_with_backoff(
+                lambda: stock.info,
+                max_attempts=2
+            )
+            
+            # If YFinance fails, try to get basic info from alternative source
+            if not info:
+                logger.warning("Failed to get detailed info, trying alternative source")
+                try:
+                    end_date = datetime.now()
+                    start_date = end_date - timedelta(days=30)
+                    df = web.DataReader(ticker, 'stooq', start_date, end_date)
+                    if not df.empty:
+                        info = {
+                            'longName': ticker.upper(),
+                            'shortName': ticker.upper(),
+                            'longBusinessSummary': 'Company information temporarily unavailable',
+                            'sector': 'N/A',
+                            'industry': 'N/A',
+                            'marketCap': df['Close'].iloc[-1] * df['Volume'].iloc[-1],
+                            'fiftyTwoWeekHigh': df['High'].max(),
+                            'fiftyTwoWeekLow': df['Low'].min()
+                        }
+                except Exception as e:
+                    logger.error(f"Alternative source error: {str(e)}")
+                    info = {}
+            
+            # Extract and format information
+            overview = {
+                'Name': info.get('longName', info.get('shortName', ticker.upper())),
+                'Description': info.get('longBusinessSummary', 'Company description temporarily unavailable'),
+                'Sector': info.get('sector', 'N/A'),
+                'Industry': info.get('industry', 'N/A'),
+                'MarketCap': info.get('marketCap', 'N/A'),
+                'PERatio': info.get('trailingPE', 'N/A'),
+                'DividendYield': info.get('dividendYield', 'N/A'),
+                '52WeekHigh': info.get('fiftyTwoWeekHigh', 'N/A'),
+                '52WeekLow': info.get('fiftyTwoWeekLow', 'N/A'),
+                'Exchange': info.get('exchange', 'N/A'),
+                'Address': ', '.join(filter(None, [
+                    info.get('city', ''),
+                    info.get('state', ''),
+                    info.get('country', '')
+                ])) or 'N/A',
+                'FullTimeEmployees': info.get('fullTimeEmployees', 'N/A')
+            }
+            
+            # Format market cap
+            if overview['MarketCap'] != 'N/A':
+                market_cap = float(overview['MarketCap'])
+                if market_cap >= 1e9:
+                    overview['MarketCap'] = f"${market_cap/1e9:.2f}B"
+                else:
+                    overview['MarketCap'] = f"${market_cap/1e6:.2f}M"
+            
+            # Format dividend yield
+            if overview['DividendYield'] != 'N/A' and overview['DividendYield'] is not None:
+                overview['DividendYield'] = f"{float(overview['DividendYield'])*100:.2f}%"
+            
+            return overview
+            
+        except Exception as e:
+            logger.error(f"Error fetching company overview: {str(e)}")
+            return {}
     
     @staticmethod
     def get_fundamental_data(ticker: str) -> Dict[str, Any]:
-        """Fetch fundamental data for a stock"""
+        """Get fundamental data with fallback options"""
         try:
-            # Get company overview
-            data = StockDataService._make_api_request(
-                'OVERVIEW',
-                ticker
+            stock = yf.Ticker(ticker)
+            
+            # Try to get info with retries
+            info = StockDataService._retry_with_backoff(
+                lambda: stock.info,
+                max_attempts=2
             )
             
-            if not data:
-                return {}
+            if not info:
+                # Try to calculate some basic metrics from price data
+                try:
+                    end_date = datetime.now()
+                    start_date = end_date - timedelta(days=365)
+                    df = web.DataReader(ticker, 'stooq', start_date, end_date)
+                    if not df.empty:
+                        returns = df['Close'].pct_change()
+                        beta = returns.std() * np.sqrt(252)  # Simple volatility as beta proxy
+                        return {
+                            'pe_ratio': None,
+                            'industry_pe': None,
+                            'market_cap': df['Close'].iloc[-1] * df['Volume'].iloc[-1],
+                            'dividend_yield': None,
+                            'beta': beta
+                        }
+                except Exception:
+                    pass
             
             return {
-                'pe_ratio': float(data.get('PERatio', 0)) or None,
-                'industry_pe': float(data.get('PEGRatio', 20)) or 20,
-                'market_cap': float(data.get('MarketCapitalization', 0)) or None,
-                'volume': float(data.get('Volume', 0)) or None,
-                'dividend_yield': float(data.get('DividendYield', 0)) or None
+                'pe_ratio': info.get('trailingPE'),
+                'industry_pe': info.get('industryPE'),
+                'market_cap': info.get('marketCap'),
+                'dividend_yield': info.get('dividendYield'),
+                'beta': info.get('beta')
             }
             
         except Exception as e:
-            logging.error(f"Error fetching fundamental data: {str(e)}")
-            return {}
+            logger.error(f"Error getting fundamental data: {str(e)}")
+            return {
+                'pe_ratio': None,
+                'industry_pe': None,
+                'market_cap': None,
+                'dividend_yield': None,
+                'beta': None
+            }

@@ -1,3 +1,4 @@
+# layouts/dashboard_layout.py
 from dash import dcc, html
 
 class DashboardLayout:
@@ -84,6 +85,9 @@ class DashboardLayout:
     def _create_main_content():
         """Create the main content area"""
         return html.Div([
+            # Company Overview Section (Added this section)
+            html.Div(id='company-overview', className='company-overview-section'),
+            
             # Key metrics cards
             html.Div([
                 html.Div(id='current-price-card', className='metric-card'),

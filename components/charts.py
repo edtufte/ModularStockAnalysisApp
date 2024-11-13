@@ -1,3 +1,4 @@
+# components/charts.py
 import plotly.graph_objects as go
 import plotly.express as px
 from typing import Dict, Any
