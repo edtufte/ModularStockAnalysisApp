@@ -4,7 +4,7 @@ from dash.exceptions import PreventUpdate
 from dash import html
 import time
 import logging
-from typing import Dict, Any, List, Union
+from typing import Dict, Any, List, Union, Tuple, Optional
 import pandas as pd
 
 from services.stock_data_service import StockDataService
@@ -22,27 +22,40 @@ class DashboardCallbacks:
         
         @app.callback(
             [Output('ticker-error', 'children'),
-             Output('main-content', 'style')],
+             Output('main-content', 'style'),
+             Output('benchmark-error', 'children')],  # New output for benchmark errors
             [Input('analyze-button', 'n_clicks'),
-             Input('stock-input', 'n_submit')],
+             Input('stock-input', 'n_submit'),
+             Input('benchmark-dropdown', 'value')],  # Add benchmark input
             [State('stock-input', 'value')]
         )
-        def validate_input(n_clicks, n_submit, ticker_value):
-            """Callback to validate stock ticker input"""
+        def validate_input(n_clicks, n_submit, benchmark_ticker, ticker_value):
+            """Callback to validate stock ticker input and benchmark"""
             # If no trigger, prevent update
             if not n_clicks and not n_submit:
                 raise PreventUpdate
             
+            benchmark_error = ""
+            
             # Check for empty input
             if not ticker_value:
-                return "Please enter a ticker symbol", {'display': 'none'}
+                return "Please enter a ticker symbol", {'display': 'none'}, benchmark_error
             
             # Convert to uppercase and remove whitespace
             ticker_value = ticker_value.strip().upper()
             
             # Basic format validation
             if not all(c.isalpha() or c in '.-' for c in ticker_value):
-                return "Invalid ticker format", {'display': 'none'}
+                return "Invalid ticker format", {'display': 'none'}, benchmark_error
+            
+            # Validate benchmark ticker if provided
+            if benchmark_ticker:
+                try:
+                    is_valid, error_msg = StockDataService.validate_ticker(benchmark_ticker)
+                    if not is_valid:
+                        benchmark_error = f"Benchmark error: {error_msg}"
+                except Exception as e:
+                    benchmark_error = f"Benchmark validation error: {str(e)}"
             
             # Add small delay to prevent too rapid requests
             time.sleep(0.1)
@@ -52,15 +65,15 @@ class DashboardCallbacks:
                 try:
                     is_valid, error_message = StockDataService.validate_ticker(ticker_value)
                     if is_valid:
-                        return "", {'display': 'block'}
+                        return "", {'display': 'block'}, benchmark_error
                     if attempt < 1:
                         time.sleep(0.5)
                 except Exception as e:
                     logging.error(f"Validation error on attempt {attempt + 1}: {str(e)}")
                     if attempt == 1:  # Only return error on final attempt
-                        return f"Error validating ticker: {str(e)}", {'display': 'none'}
+                        return f"Error validating ticker: {str(e)}", {'display': 'none'}, benchmark_error
             
-            return error_message or "Unable to validate ticker", {'display': 'none'}
+            return error_message or "Unable to validate ticker", {'display': 'none'}, benchmark_error
 
         @app.callback(
             [Output('stock-table', 'children'),
@@ -72,13 +85,15 @@ class DashboardCallbacks:
             Output('volatility-card', 'children'),
             Output('sharpe-ratio-card', 'children'),
             Output('recommendation-container', 'children'),
-            Output('company-overview', 'children')],  # Added this output
+            Output('company-overview', 'children'),
+            Output('benchmark-status', 'children')],  # New output for benchmark status
             [Input('analyze-button', 'n_clicks'),
             Input('stock-input', 'n_submit'),
-            Input('timeframe-dropdown', 'value')],
+            Input('timeframe-dropdown', 'value'),
+            Input('benchmark-dropdown', 'value')],
             [State('stock-input', 'value')]
         )
-        def update_dashboard(n_clicks, n_submit, timeframe, ticker):
+        def update_dashboard(n_clicks, n_submit, timeframe, benchmark_ticker, ticker):
             """Main callback to update all dashboard components"""
             if not (n_clicks or n_submit) or not ticker:
                 raise PreventUpdate
@@ -95,15 +110,12 @@ class DashboardCallbacks:
                 error_card,        # volatility-card
                 error_card,        # sharpe-ratio-card
                 error_message,     # recommendation-container
-                error_message      # company-overview
+                error_message,     # company-overview
+                None              # benchmark-status
             ]
             
             try:
                 ticker = ticker.strip().upper()
-                
-                # Fetch company overview
-                company_overview = StockDataService.get_company_overview(ticker)
-                company_section = DashboardComponents.create_company_overview(company_overview)
                 
                 # Configure logging
                 logging.basicConfig(level=logging.INFO)
@@ -116,10 +128,51 @@ class DashboardCallbacks:
                     logger.error(f"No data available for {ticker}")
                     return empty_response
                 
+                # Fetch benchmark data if provided
+                benchmark_df = None
+                benchmark_name = None
+                benchmark_status = None
+                
+                if benchmark_ticker:
+                    try:
+                        benchmark_df = StockDataService.fetch_stock_data(benchmark_ticker, timeframe)
+                        if benchmark_df is None or benchmark_df.empty:
+                            raise ValueError("No benchmark data available")
+                            
+                        benchmark_info = StockDataService.get_company_overview(benchmark_ticker)
+                        benchmark_name = benchmark_info.get('Name', benchmark_ticker)
+                        
+                        # Create success status indicator
+                        benchmark_status = html.Div([
+                            html.I(className="fas fa-check-circle mr-2", 
+                                  style={"color": "green"}),
+                            html.Span(f"Benchmark loaded: {benchmark_name}")
+                        ], className="benchmark-status-success")
+                        
+                    except Exception as e:
+                        logger.warning(f"Error fetching benchmark data: {str(e)}")
+                        benchmark_status = html.Div([
+                            html.I(className="fas fa-exclamation-circle mr-2", 
+                                  style={"color": "red"}),
+                            html.Span(f"Benchmark error: {str(e)}")
+                        ], className="benchmark-status-error")
+                        benchmark_df = None
+                else:
+                    benchmark_status = html.Div([
+                        html.I(className="fas fa-info-circle mr-2", 
+                              style={"color": "gray"}),
+                        html.Span("No benchmark selected")
+                    ], className="benchmark-status-info")
+                
+                # Fetch company overview
+                company_overview = StockDataService.get_company_overview(ticker)
+                company_section = DashboardComponents.create_company_overview(company_overview)
+                
                 logger.info(f"Successfully fetched data for {ticker}. Calculating indicators...")
                 
                 # Calculate technical indicators
-                df = TechnicalIndicators.calculate_all_indicators(df)
+                df = TechnicalIndicators.calculate_all_indicators(df, 
+                                                               benchmark_returns=benchmark_df['Close'].pct_change() if benchmark_df is not None else None)
                 df_yearly = TechnicalIndicators.calculate_performance_metrics(df)
                 
                 # Get fundamental data
@@ -147,7 +200,9 @@ class DashboardCallbacks:
                 
                 # Create visualizations
                 try:
-                    price_chart = ChartComponents.create_price_chart(df, ticker)
+                    price_chart = ChartComponents.create_price_chart(
+                        df, ticker, benchmark_df, benchmark_name
+                    )
                     volume_chart = ChartComponents.create_volume_chart(df, ticker)
                     technical_chart = ChartComponents.create_technical_chart(df, ticker)
                     logger.info("Created charts")
@@ -165,12 +220,20 @@ class DashboardCallbacks:
                     daily_returns = df['Close'].pct_change()
                     sharpe_ratio = ((daily_returns.mean() * 252) - 0.02) / (daily_returns.std() * (252 ** 0.5))
                     
+                    # Add benchmark comparison to change card if available
+                    change_text = f"{price_change:.1f}%"
+                    if benchmark_df is not None:
+                        benchmark_change = ((benchmark_df['Close'].iloc[-1] / benchmark_df['Close'].iloc[0]) - 1) * 100
+                        relative_performance = price_change - benchmark_change
+                        change_text += (f" ({'+' if relative_performance > 0 else ''}{relative_performance:.1f}% "
+                                      f"vs {benchmark_ticker})")
+                    
                     # Create metric cards
                     price_card = DashboardComponents.create_metric_card(
                         "Current Price", f"${current_price:.2f}"
                     )
                     change_card = DashboardComponents.create_metric_card(
-                        "Period Return", f"{price_change:.1f}%"
+                        "Period Return", change_text
                     )
                     volatility_card = DashboardComponents.create_metric_card(
                         "Annualized Volatility", f"{volatility:.1f}%"
@@ -208,7 +271,8 @@ class DashboardCallbacks:
                     volatility_card,    # volatility-card
                     sharpe_card,        # sharpe-ratio-card
                     analysis,           # recommendation-container
-                    company_section     # company-overview
+                    company_section,    # company-overview
+                    benchmark_status    # benchmark-status
                 ]
                 
             except Exception as e:

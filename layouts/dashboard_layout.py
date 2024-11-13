@@ -4,6 +4,18 @@ from dash import dcc, html
 class DashboardLayout:
     """Class for defining the main dashboard layout"""
     
+    # Define common benchmarks using ETF proxies
+    BENCHMARK_OPTIONS = [
+        {'label': 'Total Stock Market (VTI)', 'value': 'VTI'},
+        {'label': 'S&P 500 (SPY)', 'value': 'SPY'},
+        {'label': 'Nasdaq 100 (QQQ)', 'value': 'QQQ'},
+        {'label': 'Dow Jones (DIA)', 'value': 'DIA'},
+        {'label': 'Russell 2000 (IWM)', 'value': 'IWM'},
+        {'label': 'Developed Markets (EFA)', 'value': 'EFA'},
+        {'label': 'Emerging Markets (EEM)', 'value': 'EEM'},
+        {'label': 'Bond Aggregate (AGG)', 'value': 'AGG'},
+    ]
+    
     @staticmethod
     def create_layout():
         """Create the main dashboard layout"""
@@ -60,32 +72,51 @@ class DashboardLayout:
                 )
             ], className='input-container'),
             
-            # Timeframe Dropdown
+            # Analysis Controls Container
             html.Div([
-                html.Label(
-                    "Select Timeframe",
-                    style={'display': 'block', 'marginBottom': '8px', 'color': '#2c3e50', 'fontWeight': '500'}
-                ),
-                dcc.Dropdown(
-                    id='timeframe-dropdown',
-                    options=[
-                        {'label': '6 Months', 'value': '6mo'},
-                        {'label': '1 Year', 'value': '1y'},
-                        {'label': '3 Years', 'value': '3y'},
-                        {'label': '5 Years', 'value': '5y'},
-                        {'label': 'Max', 'value': 'max'}
-                    ],
-                    value='1y',
-                    className='dropdown'
-                )
-            ], className='dropdown-container')
+                # Timeframe Dropdown
+                html.Div([
+                    html.Label(
+                        "Select Timeframe",
+                        className='control-label'
+                    ),
+                    dcc.Dropdown(
+                        id='timeframe-dropdown',
+                        options=[
+                            {'label': '6 Months', 'value': '6mo'},
+                            {'label': '1 Year', 'value': '1y'},
+                            {'label': '3 Years', 'value': '3y'},
+                            {'label': '5 Years', 'value': '5y'},
+                            {'label': 'Max', 'value': 'max'}
+                        ],
+                        value='1y',
+                        className='dropdown'
+                    )
+                ], className='dropdown-container'),
+                
+                # Benchmark Dropdown and Status
+                html.Div([
+                    html.Label(
+                        "Compare with Benchmark",
+                        className='control-label'
+                    ),
+                    dcc.Dropdown(
+                        id='benchmark-dropdown',
+                        options=DashboardLayout.BENCHMARK_OPTIONS,
+                        value='VTI',  # Default to Total Stock Market ETF
+                        className='dropdown'
+                    ),
+                    html.Div(id='benchmark-error', className='error-message'),
+                    html.Div(id='benchmark-status', className='benchmark-status')
+                ], className='dropdown-container')
+            ], className='analysis-controls')
         ], className='control-panel')
 
     @staticmethod
     def _create_main_content():
         """Create the main content area"""
         return html.Div([
-            # Company Overview Section (Added this section)
+            # Company Overview Section
             html.Div(id='company-overview', className='company-overview-section'),
             
             # Key metrics cards

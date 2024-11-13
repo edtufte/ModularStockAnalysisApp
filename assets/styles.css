@@ -42,21 +42,56 @@ body {
     display: flex;
     gap: 1.25rem;
     margin-bottom: 2rem;
+    align-items: flex-start;
 }
 
-.input-container, .dropdown-container {
-    flex: 1;
+.input-container {
+    flex: 0.5;
     background: white;
-    padding: 1rem;
+    padding: 1.25rem;
+    border-radius: 0.5rem;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.analysis-controls {
+    flex: 0.5;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    background: white;
+    padding: 1.25rem;
     border-radius: 0.5rem;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
 .stock-form {
     display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
+    gap: 0.75rem;
+    align-items: flex-start;
     margin-bottom: 0.75rem;
+}
+
+.analyze-button {
+    padding: 0.75rem 1rem;
+    width: 100px;
+    background-color: #3b82f6;
+    color: white;
+    border: none;
+    border-radius: 0.375rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 0.15s ease-in-out;
+}
+
+.stock-input {
+    width: 200px;
+    padding: 0.75rem;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.375rem;
+    font-size: 0.875rem;
+    color: #1f2937;
+    transition: border-color 0.15s ease-in-out;
 }
 
 .stock-input {
@@ -101,6 +136,39 @@ body {
     color: #6b7280;
     font-size: 0.75rem;
     margin: 0.5rem 0 0 0;
+}
+
+/* Benchmark Status Styles */
+.benchmark-status {
+    margin-top: 0.75rem;
+    padding: 0.5rem;
+    border-radius: 0.375rem;
+    font-size: 0.875rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.benchmark-status-success {
+    background-color: #f0fdf4;
+    border: 1px solid #86efac;
+    color: #166534;
+}
+
+.benchmark-status-error {
+    background-color: #fef2f2;
+    border: 1px solid #fca5a5;
+    color: #991b1b;
+}
+
+.benchmark-status-info {
+    background-color: #f3f4f6;
+    border: 1px solid #d1d5db;
+    color: #4b5563;
+}
+
+.benchmark-status i {
+    font-size: 1rem;
 }
 
 /* Error States */
@@ -242,8 +310,7 @@ body {
     text-align: right;
 }
 
-/* Add these styles to your styles.css file */
-
+/* Company Overview */
 .company-overview-container {
     background: white;
     border-radius: 0.5rem;
@@ -317,17 +384,6 @@ body {
     color: #4b5563;
     font-size: 0.875rem;
     margin: 0;
-}
-
-@media (max-width: 640px) {
-    .details-grid {
-        grid-template-columns: 1fr;
-        gap: 1rem;
-    }
-    
-    .company-tags {
-        flex-wrap: wrap;
-    }
 }
 
 /* Charts Container */
@@ -429,6 +485,14 @@ body {
     .analysis-grid {
         grid-template-columns: 1fr;
     }
+    
+    .control-panel {
+        flex-direction: column;
+    }
+    
+    .benchmark-status {
+        margin-bottom: 0.75rem;
+    }
 }
 
 @media (max-width: 768px) {
@@ -442,6 +506,11 @@ body {
     
     .metrics-container {
         grid-template-columns: repeat(2, 1fr);
+    }
+    
+    .details-grid {
+        grid-template-columns: 1fr;
+        gap: 1rem;
     }
 }
 
@@ -461,6 +530,15 @@ body {
     .recommendation-section,
     .price-targets-section {
         padding: 1rem;
+    }
+    
+    .company-tags {
+        flex-wrap: wrap;
+    }
+    
+    .benchmark-status {
+        flex-direction: column;
+        text-align: center;
     }
 }
 

@@ -71,6 +71,44 @@ class StockDataService:
             return None
     
     @staticmethod
+    def _format_market_cap(market_cap: float) -> str:
+        """Format market cap with appropriate suffix and precision
+        
+        Args:
+            market_cap (float): Raw market cap value
+            
+        Returns:
+            str: Formatted market cap string (e.g., "$1.23T")
+        """
+        if market_cap >= 1e12:
+            return f"${market_cap/1e12:.2f}T"
+        elif market_cap >= 1e9:
+            return f"${market_cap/1e9:.2f}B"
+        elif market_cap >= 1e6:
+            return f"${market_cap/1e6:.2f}M"
+        else:
+            return f"${market_cap:.2f}"
+    
+    @staticmethod
+    def _calculate_market_cap(price: float, volume: float, shares_outstanding: Optional[float] = None) -> float:
+        """Calculate market cap using the most accurate available data
+        
+        Args:
+            price (float): Current stock price
+            volume (float): Trading volume
+            shares_outstanding (float, optional): Number of shares outstanding
+            
+        Returns:
+            float: Calculated market cap
+        """
+        if shares_outstanding:
+            return price * shares_outstanding
+        else:
+            # Fallback to a more conservative estimate using average daily volume
+            # This is still an approximation but better than using single day volume
+            return price * (volume * 30)  # Using monthly volume as a proxy
+    
+    @staticmethod
     def validate_ticker(ticker: str) -> Tuple[bool, str]:
         """Validate stock ticker symbol with multiple attempts and sources"""
         try:
@@ -213,13 +251,20 @@ class StockDataService:
                     start_date = end_date - timedelta(days=30)
                     df = web.DataReader(ticker, 'stooq', start_date, end_date)
                     if not df.empty:
+                        # Calculate market cap using average volume over the period
+                        avg_volume = df['Volume'].mean()
+                        latest_price = df['Close'].iloc[-1]
+                        market_cap = StockDataService._calculate_market_cap(
+                            latest_price, avg_volume
+                        )
+                        
                         info = {
                             'longName': ticker.upper(),
                             'shortName': ticker.upper(),
                             'longBusinessSummary': 'Company information temporarily unavailable',
                             'sector': 'N/A',
                             'industry': 'N/A',
-                            'marketCap': df['Close'].iloc[-1] * df['Volume'].iloc[-1],
+                            'marketCap': market_cap,
                             'fiftyTwoWeekHigh': df['High'].max(),
                             'fiftyTwoWeekLow': df['Low'].min()
                         }
@@ -247,13 +292,9 @@ class StockDataService:
                 'FullTimeEmployees': info.get('fullTimeEmployees', 'N/A')
             }
             
-            # Format market cap
+            # Format market cap using the new helper method
             if overview['MarketCap'] != 'N/A':
-                market_cap = float(overview['MarketCap'])
-                if market_cap >= 1e9:
-                    overview['MarketCap'] = f"${market_cap/1e9:.2f}B"
-                else:
-                    overview['MarketCap'] = f"${market_cap/1e6:.2f}M"
+                overview['MarketCap'] = StockDataService._format_market_cap(float(overview['MarketCap']))
             
             # Format dividend yield
             if overview['DividendYield'] != 'N/A' and overview['DividendYield'] is not None:
@@ -286,10 +327,15 @@ class StockDataService:
                     if not df.empty:
                         returns = df['Close'].pct_change()
                         beta = returns.std() * np.sqrt(252)  # Simple volatility as beta proxy
+                        avg_volume = df['Volume'].mean()
+                        latest_price = df['Close'].iloc[-1]
+                        market_cap = StockDataService._calculate_market_cap(
+                            latest_price, avg_volume
+                        )
                         return {
                             'pe_ratio': None,
                             'industry_pe': None,
-                            'market_cap': df['Close'].iloc[-1] * df['Volume'].iloc[-1],
+                            'market_cap': market_cap,
                             'dividend_yield': None,
                             'beta': beta
                         }
