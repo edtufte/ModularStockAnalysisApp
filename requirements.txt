@@ -1,5 +1,5 @@
 # Core application dependencies
-dash==2.14.2
+dash>=2.14.2
 pandas==2.1.4
 numpy==1.26.2
 yfinance==0.2.33
@@ -14,9 +14,9 @@ pytz==2023.3.post1
 pandas-datareader==0.10.0
 
 # Dash components
-dash-core-components==2.0.0
-dash-html-components==2.0.0
-dash-table==5.0.0
+dash-core-components>=2.0.0
+dash-html-components>=2.0.0
+dash-table>=5.0.0
 
 # Server
 Flask==3.0.0
@@ -27,6 +27,3 @@ pytest==7.4.3
 black==23.12.1  # Code formatting
 flake8==6.1.0   # Code linting
 mypy==1.7.1     # Type checking
-
-# Logging and error tracking
-logging==0.4.9.6
