@@ -43,6 +43,7 @@ class DashboardCallbacks:
         
         # Refresh if data is too old based on timeframe
         refresh_thresholds = {
+            'YTD': timedelta(hours=1),
             '6mo': timedelta(hours=1),
             '1y': timedelta(hours=4),
             '3y': timedelta(days=1),

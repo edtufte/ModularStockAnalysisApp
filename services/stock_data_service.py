@@ -230,6 +230,7 @@ class StockDataService:
     def get_date_range(timeframe: str) -> Tuple[datetime, datetime]:
         """Calculate date range based on timeframe"""
         timeframe_days = {
+            'YTD': (datetime.now() - datetime(datetime.now().year, 1, 1)).days,
             '6mo': 180,
             '1y': 365,
             '3y': 1095,

@@ -138,6 +138,7 @@ class DashboardLayout:
                     dcc.Dropdown(
                         id='timeframe-dropdown',
                         options=[
+                            {'label': 'Year to Date (YTD)', 'value': 'YTD'},
                             {'label': '6 Months', 'value': '6mo'},
                             {'label': '1 Year', 'value': '1y'},
                             {'label': '3 Years', 'value': '3y'},
