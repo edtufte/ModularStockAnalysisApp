@@ -1,19 +1,35 @@
 # Modular Stock Analysis Dashboard
 
-A comprehensive stock analysis platform built with Python and Dash, featuring technical analysis, portfolio management, and strategy backtesting capabilities.
+A stock analysis platform built with Python and Dash, featuring technical analysis, portfolio management, and strategy backtesting capabilities.
 
 ![Python](https://img.shields.io/badge/python-3.9+-blue.svg)
 ![Dash](https://img.shields.io/badge/dash-2.14.2-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 
+## Key Assumptions
+
+The following assumptions are hard-coded in the calculations:
+
+- Risk-free rate = 2% (used in Sharpe Ratio, Sortino Ratio, and Alpha calculations)
+- Trading days per year = 252 (used for annualization)
+- RSI period = 14 days
+- Bollinger Bands = 20-day period with 2 standard deviations
+- MACD parameters:
+  - Fast EMA = 12 days
+  - Slow EMA = 26 days
+  - Signal line = 9-day EMA
+- Value at Risk (VaR) confidence level = 95%
+- ATR period = 14 days
+- All calculations use adjusted close prices
+
 ## Features
 
 ### 📊 Research Dashboard
-- Real-time stock data visualization
+- Stock data visualization
 - Technical indicators (Moving Averages, RSI, MACD, Bollinger Bands)
 - Volume analysis
 - Risk metrics calculation
-- Automated trading signals
+- Trading signals
 - Benchmark comparison
 
 ### 📈 Portfolio Management
