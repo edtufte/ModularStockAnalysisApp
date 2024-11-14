@@ -3,7 +3,7 @@ from dash.dependencies import Input, Output, State
 from dash.exceptions import PreventUpdate
 from dash import html
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 import pandas as pd
 from models.portfolio import Portfolio
 from services.analysis_service import AnalysisService
@@ -17,35 +17,38 @@ def register_callbacks(app, db):
     
     @app.callback(
         [Output("backtesting-date-range", "min_date_allowed"),
-         Output("backtesting-date-range", "max_date_allowed"),
-         Output("backtesting-date-range", "start_date"),
-         Output("backtesting-date-range", "end_date")],
-        [Input("portfolio-dropdown-backtesting", "value")]
+        Output("backtesting-date-range", "max_date_allowed"),
+        Output("backtesting-date-range", "start_date"),
+        Output("backtesting-date-range", "end_date")],
+        [Input("portfolio-dropdown-backtesting", "value")],
+        [State("backtesting-date-range", "start_date"),
+        State("backtesting-date-range", "end_date")]
     )
-    def update_date_range(portfolio_id):
+    def update_date_range(portfolio_id, current_start_date, current_end_date):
         """Update the allowed date range based on available data"""
-        if not portfolio_id:
-            today = datetime.now()
-            one_year_ago = today.replace(year=today.year - 1)
-            return (
-                "2010-01-01",
-                today.strftime("%Y-%m-%d"),
-                one_year_ago.strftime("%Y-%m-%d"),
-                today.strftime("%Y-%m-%d")
-            )
-            
+        today = datetime.now()
+        
         try:
+            if not portfolio_id:
+                # Initial state with no portfolio selected
+                return (
+                    "2010-01-01",
+                    today.strftime("%Y-%m-%d"),
+                    current_start_date or (today - timedelta(days=365)).strftime("%Y-%m-%d"),
+                    current_end_date or today.strftime("%Y-%m-%d")
+                )
+                
+            # Get portfolio details and find available date range
             details = portfolio.get_portfolio_details(portfolio_id)
             if not details["holdings"]:
                 raise PreventUpdate
                 
-            # Find the earliest available data across all holdings
+            # Find the earliest and latest available data across all holdings
             min_dates = []
             max_dates = []
             
             for holding in details["holdings"]:
                 ticker = holding["ticker"]
-                # Fetch max available data
                 df = StockDataService.fetch_stock_data(ticker, 'max')
                 if df is not None and not df.empty:
                     min_dates.append(df.index.min())
@@ -57,9 +60,31 @@ def register_callbacks(app, db):
             earliest_date = min(min_dates)
             latest_date = max(max_dates)
             
-            # Set default range to last year if available
+            # If we have current dates selected, validate and preserve them
+            if current_start_date and current_end_date:
+                try:
+                    # Convert string dates to timestamps for comparison
+                    start_ts = pd.Timestamp(current_start_date)
+                    end_ts = pd.Timestamp(current_end_date)
+                    
+                    # Ensure dates are within valid range
+                    valid_start = max(earliest_date, start_ts)
+                    valid_end = min(latest_date, end_ts)
+                    
+                    logger.info(f"Preserving date range: {valid_start} to {valid_end}")
+                    
+                    return (
+                        earliest_date.strftime("%Y-%m-%d"),
+                        latest_date.strftime("%Y-%m-%d"),
+                        valid_start.strftime("%Y-%m-%d"),
+                        valid_end.strftime("%Y-%m-%d")
+                    )
+                except Exception as e:
+                    logger.error(f"Error validating dates: {str(e)}")
+            
+            # Only set default dates if no dates are currently selected
             default_end = latest_date
-            default_start = (latest_date - pd.Timedelta(days=365))
+            default_start = latest_date - pd.Timedelta(days=365)
             if default_start < earliest_date:
                 default_start = earliest_date
             
@@ -72,7 +97,13 @@ def register_callbacks(app, db):
             
         except Exception as e:
             logger.error(f"Error updating date range: {str(e)}")
-            raise PreventUpdate
+            # Return current dates if there's an error
+            return (
+                "2010-01-01",
+                today.strftime("%Y-%m-%d"),
+                current_start_date or (today - timedelta(days=365)).strftime("%Y-%m-%d"),
+                current_end_date or today.strftime("%Y-%m-%d")
+            )
 
     @app.callback(
         Output("portfolio-details-backtesting", "children"),
@@ -205,40 +236,51 @@ def register_callbacks(app, db):
                 html.H4("Backtesting Results", className="subsection-title"),
                 html.Table([
                     html.Tbody([
+                        # Portfolio Returns Section
                         html.Tr([
-                            html.Td("Total Return"),
+                            html.Td("Portfolio Total Return", style={'fontWeight': 'bold'}),
                             html.Td(f"{results['portfolio_return']*100:.2f}%")
                         ]),
                         html.Tr([
-                            html.Td("Annualized Return"),
+                            html.Td("Portfolio Annualized Return", style={'fontWeight': 'bold'}),
                             html.Td(f"{results['annualized_return']*100:.2f}%")
                         ]),
+                        
+                        # Benchmark Returns Section
+                        html.Tr([html.Td("", colSpan=2, style={'borderTop': '1px solid #e5e7eb'})]),  # Divider
                         html.Tr([
-                            html.Td("Benchmark Return"),
+                            html.Td("Benchmark Total Return", style={'fontWeight': 'bold'}),
                             html.Td(f"{results['benchmark_return']*100:.2f}%")
                         ]),
                         html.Tr([
-                            html.Td("Alpha"),
+                            html.Td("Benchmark Annualized Return", style={'fontWeight': 'bold'}),
+                            html.Td(f"{results['annualized_benchmark_return']*100:.2f}%")
+                        ]),
+                        
+                        # Risk Metrics Section
+                        html.Tr([html.Td("", colSpan=2, style={'borderTop': '1px solid #e5e7eb'})]),  # Divider
+                        html.Tr([
+                            html.Td("Alpha", style={'fontWeight': 'bold'}),
                             html.Td(f"{results['alpha']*100:.2f}%")
                         ]),
                         html.Tr([
-                            html.Td("Beta"),
+                            html.Td("Beta", style={'fontWeight': 'bold'}),
                             html.Td(f"{results['beta']:.2f}")
                         ]),
                         html.Tr([
-                            html.Td("Sharpe Ratio"),
+                            html.Td("Sharpe Ratio", style={'fontWeight': 'bold'}),
                             html.Td(f"{results['sharpe_ratio']:.2f}")
                         ]),
                         html.Tr([
-                            html.Td("Volatility"),
+                            html.Td("Volatility", style={'fontWeight': 'bold'}),
                             html.Td(f"{results['volatility']*100:.2f}%")
                         ]),
                         html.Tr([
-                            html.Td("Maximum Drawdown"),
+                            html.Td("Maximum Drawdown", style={'fontWeight': 'bold'}),
                             html.Td(f"{results['max_drawdown']*100:.2f}%")
                         ]),
                         html.Tr([
-                            html.Td("Information Ratio"),
+                            html.Td("Information Ratio", style={'fontWeight': 'bold'}),
                             html.Td(f"{results['information_ratio']:.2f}")
                         ])
                     ])
