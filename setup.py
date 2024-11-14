@@ -18,6 +18,6 @@ setup(
         'dash-html-components==2.0.0',
         'dash-table==5.0.0',
         'Flask==3.0.0',
-        'gunicorn==21.2.0',
+        'gunicorn==22.0.0',
     ],
 )
