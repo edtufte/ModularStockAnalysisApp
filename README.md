@@ -34,7 +34,7 @@ A comprehensive stock analysis platform built with Python and Dash, featuring te
 
 ## Technical Highlights
 
-- **Intelligent Data Caching**: Market-hours aware refresh system
+- **Efficient Data Caching**: Prevents duplicate downloads of historical data
 - **Advanced Technical Analysis**: Comprehensive indicator calculations
 - **Robust Error Handling**: Graceful degradation with detailed logging
 - **Responsive Design**: Optimized for all screen sizes
@@ -133,7 +133,7 @@ modular-stock-analysis/
 ## Performance Optimizations
 
 - Intelligent data caching
-- Market hours-based refresh
+- Smart cache management
 - Vectorized calculations
 - Efficient database operations
 - Responsive UI components
