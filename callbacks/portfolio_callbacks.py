@@ -14,10 +14,11 @@ def register_callbacks(app, db):
     @app.callback(
         Output('portfolio-update-trigger', 'data'),
         [Input("create-portfolio-button", "n_clicks"),
+         Input("portfolio-name-input", "n_submit"),
          Input("clear-portfolios-button", "n_clicks"),
          Input("delete-portfolio-button", "n_clicks")]
     )
-    def trigger_portfolio_update(create_clicks, clear_clicks, delete_clicks):
+    def trigger_portfolio_update(create_clicks, name_submit, clear_clicks, delete_clicks):
         """Trigger a portfolio update when any portfolio action occurs"""
         if not callback_context.triggered:
             raise PreventUpdate
@@ -42,87 +43,69 @@ def register_callbacks(app, db):
             return [], []
 
     @app.callback(
-        Output("portfolio-dropdown", "value"),
-        [Input("create-portfolio-button", "n_clicks"),
-         Input("clear-portfolios-button", "n_clicks"),
-         Input("delete-portfolio-button", "n_clicks")],
-        [State("portfolio-name-input", "value"),
-         State("portfolio-dropdown", "value"),
-         State("user-id", "data")]
-    )
-    def update_selected_portfolio(create_clicks, clear_clicks, delete_clicks, 
-                                portfolio_name, current_portfolio_id, user_id):
-        """Update the selected portfolio value"""
-        ctx = callback_context
-        if not ctx.triggered:
-            raise PreventUpdate
-
-        triggered_id = ctx.triggered[0]['prop_id'].split('.')[0]
-        
-        try:
-            if triggered_id == "create-portfolio-button" and create_clicks and portfolio_name:
-                # Find the newly created portfolio
-                portfolios = portfolio.get_user_portfolios(user_id)
-                new_portfolio = next((p for p in portfolios if p["name"] == portfolio_name), None)
-                if new_portfolio:
-                    return new_portfolio["id"]
-            elif triggered_id in ["clear-portfolios-button", "delete-portfolio-button"]:
-                return None
-            
-            return no_update
-        except Exception as e:
-            logging.error(f"Error updating selected portfolio: {str(e)}")
-            return no_update
-
-    @app.callback(
-        [Output("create-portfolio-message", "children"),
+        [Output("portfolio-dropdown", "value"),
+         Output("create-portfolio-message", "children"),
          Output("portfolio-name-input", "value")],
         [Input("create-portfolio-button", "n_clicks"),
+         Input("portfolio-name-input", "n_submit"),
          Input("clear-portfolios-button", "n_clicks"),
          Input("delete-portfolio-button", "n_clicks")],
         [State("portfolio-name-input", "value"),
          State("portfolio-dropdown", "value"),
          State("user-id", "data")]
     )
-    def manage_portfolios(create_clicks, clear_clicks, delete_clicks, name, selected_portfolio_id, user_id):
-        """Handle portfolio creation, deletion, and clearing"""
+    def manage_portfolios(create_clicks, name_submit, clear_clicks, delete_clicks, 
+                         portfolio_name, current_portfolio_id, user_id):
+        """Handle portfolio management and selection"""
         ctx = callback_context
         if not ctx.triggered:
             raise PreventUpdate
-            
+
         trigger_id = ctx.triggered[0]['prop_id'].split('.')[0]
         
         try:
-            if trigger_id == "clear-portfolios-button" and clear_clicks:
+            # Create portfolio (via button or Enter key)
+            if trigger_id in ["create-portfolio-button", "portfolio-name-input"] and (create_clicks or name_submit) and portfolio_name:
+                portfolio_id = portfolio.create_portfolio(user_id, portfolio_name)
+                return (
+                    portfolio_id,  # Select the new portfolio
+                    html.Div(f"Portfolio '{portfolio_name}' created successfully! (ID: {portfolio_id})", 
+                            className="success-message"),
+                    ""  # Clear the input
+                )
+                
+            # Clear all portfolios
+            elif trigger_id == "clear-portfolios-button" and clear_clicks:
                 portfolio.clear_user_portfolios(user_id)
                 return (
+                    None,  # Clear selection
                     html.Div("All portfolios cleared", className="success-message"),
-                    ""
+                    ""  # Clear the input
                 )
+                
+            # Delete selected portfolio
             elif trigger_id == "delete-portfolio-button" and delete_clicks:
-                if not selected_portfolio_id:
+                if not current_portfolio_id:
                     return (
+                        no_update,  # Keep current selection
                         html.Div("Please select a portfolio to delete", className="warning-message"),
-                        no_update
+                        no_update  # Keep input as is
                     )
-                portfolio.delete_portfolio(selected_portfolio_id)
+                portfolio.delete_portfolio(current_portfolio_id)
                 return (
-                    html.Div(f"Portfolio (ID: {selected_portfolio_id}) deleted", className="success-message"),
-                    no_update
+                    None,  # Clear selection
+                    html.Div(f"Portfolio (ID: {current_portfolio_id}) deleted", className="success-message"),
+                    no_update  # Keep input as is
                 )
-            elif trigger_id == "create-portfolio-button" and create_clicks and name:
-                portfolio_id = portfolio.create_portfolio(user_id, name)
-                return (
-                    html.Div(f"Portfolio '{name}' created successfully! (ID: {portfolio_id})", 
-                            className="success-message"),
-                    ""
-                )
+                
             raise PreventUpdate
+            
         except Exception as e:
             logging.error(f"Error managing portfolios: {str(e)}")
             return (
+                no_update,  # Keep current selection
                 html.Div(f"Error managing portfolios: {str(e)}", className="error-message"),
-                no_update
+                no_update  # Keep input as is
             )
 
     @app.callback(

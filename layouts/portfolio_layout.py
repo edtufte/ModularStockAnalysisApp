@@ -19,7 +19,8 @@ class PortfolioLayout:
                         id="portfolio-name-input",
                         type="text",
                         placeholder="Enter portfolio name",
-                        className="stock-input"
+                        className="stock-input",
+                        n_submit=0
                     ),
                     html.Button(
                         "Create Portfolio",
