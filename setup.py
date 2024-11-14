@@ -5,7 +5,7 @@ setup(
     version="0.1",
     packages=find_packages(),
     install_requires=[
-        'dash==2.14.2',
+        'dash==2.15.0',
         'pandas==2.1.4',
         'numpy==1.26.2',
         'yfinance==0.2.33',
