@@ -24,6 +24,6 @@ gunicorn==22.0.0  # For production deployment
 
 # Development and testing
 pytest==7.4.3
-black==23.12.1  # Code formatting
+black==24.3.0  # Code formatting
 flake8==6.1.0   # Code linting
 mypy==1.7.1     # Type checking
