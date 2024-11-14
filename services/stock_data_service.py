@@ -2,6 +2,7 @@ from datetime import datetime, timedelta
 from typing import Tuple, Optional, Dict, Any, List
 import time
 import yfinance as yf
+import numpy as np
 import pandas as pd
 import requests
 from pandas_datareader import data as pdr
@@ -405,9 +406,10 @@ class StockDataService:
             logger.error(f"Error fetching stock data for {ticker}: {str(e)}")
             return None
 
+
     @staticmethod
     def get_company_overview(ticker: str) -> Dict[str, Any]:
-        """Fetches company overview with improved caching"""
+        """Fetches company overview with improved data mapping"""
         try:
             # Check cache first
             cached_info = StockDataService._cache.get_cached_company_info(ticker)
@@ -418,14 +420,137 @@ class StockDataService:
             stock = yf.Ticker(ticker)
             info = stock.info
             
-            if info and isinstance(info, dict):
-                # Cache the data
-                StockDataService._cache.update_company_info(ticker, info)
-                return info
+            if not info or not isinstance(info, dict):
+                return StockDataService._get_default_overview(ticker)
             
-            logger.warning(f"No company info available for {ticker}")
-            return {}
+            # Process and normalize the data
+            processed_info = {
+                'Name': info.get('longName') or info.get('shortName', ticker.upper()),
+                'Exchange': info.get('exchange', 'N/A'),
+                'Sector': info.get('sector', 'N/A'),
+                'Industry': info.get('industry', 'N/A'),
+                'Description': info.get('longBusinessSummary', 'N/A'),
+                'MarketCap': StockDataService._format_market_cap(info.get('marketCap')),
+                'PERatio': StockDataService._format_number(info.get('trailingPE')),
+                'DividendYield': StockDataService._format_percentage(info.get('dividendYield')),
+                '52WeekHigh': StockDataService._format_number(info.get('fiftyTwoWeekHigh')),
+                '52WeekLow': StockDataService._format_number(info.get('fiftyTwoWeekLow')),
+                'FullTimeEmployees': StockDataService._format_employees(info.get('fullTimeEmployees')),
+                'Website': info.get('website', 'N/A'),
+                'Address': StockDataService._format_address({
+                    'address1': info.get('address1'),
+                    'city': info.get('city'),
+                    'state': info.get('state'),
+                    'country': info.get('country'),
+                    'phone': info.get('phone')
+                })
+            }
+            
+            # Cache the processed data
+            StockDataService._cache.update_company_info(ticker, processed_info)
+            return processed_info
                 
         except Exception as e:
-            logger.error(f"Error fetching company overview: {str(e)}")
-            return {}
+            logging.error(f"Error fetching company overview: {str(e)}")
+            return StockDataService._get_default_overview(ticker)
+
+    @staticmethod
+    def _format_address(address_info: Dict[str, Any]) -> str:
+        """Format complete address from components"""
+        try:
+            address_parts = []
+            if address_info.get('address1'):
+                address_parts.append(address_info['address1'])
+            if address_info.get('city'):
+                address_parts.append(address_info['city'])
+            if address_info.get('state'):
+                address_parts.append(address_info['state'])
+            if address_info.get('country'):
+                address_parts.append(address_info['country'])
+            
+            address = ', '.join(filter(None, address_parts))
+            phone = address_info.get('phone')
+            
+            if address and phone:
+                return f"{address} • {phone}"
+            elif address:
+                return address
+            return 'N/A'
+        except Exception:
+            return 'N/A'
+
+    @staticmethod
+    def _format_market_cap(value: Optional[float]) -> str:
+        """Format market cap with appropriate suffix"""
+        if not value or np.isnan(value):
+            return 'N/A'
+        
+        try:
+            trillion = 1_000_000_000_000
+            billion = 1_000_000_000
+            million = 1_000_000
+            
+            if value >= trillion:
+                return f"${value/trillion:.2f}T"
+            elif value >= billion:
+                return f"${value/billion:.2f}B"
+            elif value >= million:
+                return f"${value/million:.2f}M"
+            else:
+                return f"${value:,.0f}"
+        except Exception:
+            return 'N/A'
+
+    @staticmethod
+    def _format_number(value: Optional[float]) -> str:
+        """Format numeric values with proper decimal places"""
+        if not value or np.isnan(value):
+            return 'N/A'
+        try:
+            return f"{value:.2f}"
+        except Exception:
+            return 'N/A'
+
+    @staticmethod
+    def _format_percentage(value: Optional[float]) -> str:
+        """Format percentage values"""
+        if not value or np.isnan(value):
+            return 'N/A'
+        try:
+            return f"{value*100:.2f}%"
+        except Exception:
+            return 'N/A'
+
+    @staticmethod
+    def _format_employees(value: Optional[int]) -> str:
+        """Format employee count with appropriate suffix"""
+        if not value or np.isnan(value):
+            return 'N/A'
+        
+        try:
+            if value >= 1_000_000:
+                return f"{value/1_000_000:.1f}M"
+            elif value >= 1_000:
+                return f"{value/1_000:.1f}K"
+            return f"{value:,}"
+        except Exception:
+            return 'N/A'
+
+    @staticmethod
+    def _get_default_overview(ticker: str) -> Dict[str, Any]:
+        """Get default overview structure with N/A values"""
+        return {
+            'Name': ticker.upper(),
+            'Exchange': 'N/A',
+            'Sector': 'N/A',
+            'Industry': 'N/A',
+            'Description': 'N/A',
+            'MarketCap': 'N/A',
+            'PERatio': 'N/A',
+            'DividendYield': 'N/A',
+            '52WeekHigh': 'N/A',
+            '52WeekLow': 'N/A',
+            'FullTimeEmployees': 'N/A',
+            'Website': 'N/A',
+            'Address': 'N/A'
+        }
