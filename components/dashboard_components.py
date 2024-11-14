@@ -555,7 +555,7 @@ class DashboardComponents:
             return "N/A"
 
     @staticmethod
-    def _calculate_metrics(df: pd.DataFrame, benchmark_df: Optional[pd.DataFrame] = None) -> Dict[str, Any]:
+    def _calculate_metrics(df: pd.DataFrame, benchmark_df: Optional[pd.DataFrame] = None, benchmark_ticker: Optional[str] = None) -> Dict[str, Any]:
         """Calculate all metrics for dashboard cards with improved error handling"""
         try:
             metrics = {}
@@ -577,16 +577,13 @@ class DashboardComponents:
                     benchmark_change = ((benchmark_df['Adj Close'].iloc[-1] / benchmark_df['Adj Close'].iloc[0]) - 1) * 100
                     relative_performance = price_change - benchmark_change
                     
-                    # Get benchmark name with multiple fallbacks
-                    benchmark_name = getattr(benchmark_df, 'name', 'Market')
-                    
                     change_text += (f" ({'+' if relative_performance > 0 else ''}{relative_performance:.1f}% "
-                                f"vs {benchmark_name})")
+                                f"vs {benchmark_ticker})")
                     
                     # Add benchmark status if all benchmark calculations succeeded
                     metrics['benchmark_status'] = html.Div([
                         html.I(className="fas fa-check-circle mr-2", style={"color": "green"}),
-                        html.Span(f"Using {benchmark_name} as benchmark")
+                        html.Span(f"Using {benchmark_ticker} as benchmark")
                     ], className="benchmark-status-success")
                 except Exception as e:
                     logging.warning(f"Error calculating benchmark metrics: {str(e)}")

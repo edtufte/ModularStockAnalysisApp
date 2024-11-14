@@ -236,7 +236,7 @@ class DashboardCallbacks:
                 technical_chart = ChartComponents.create_technical_chart(df, ticker)
                 
                 # Calculate metrics
-                metrics = DashboardComponents._calculate_metrics(df, benchmark_df)
+                metrics = DashboardComponents._calculate_metrics(df, benchmark_df, benchmark_ticker)
                 
                 return [
                     price_chart,      # stock-chart

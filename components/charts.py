@@ -81,16 +81,16 @@ class ChartComponents:
                 go.Scatter(
                     x=benchmark_df.index,
                     y=benchmark_df['pct_change'],
-                    name=f'{benchmark_name} %',
+                    name=f'{benchmark_name or benchmark_df.index.name or "Benchmark"} %',
                     line=dict(color='gray', width=1, dash='dot'),
                     yaxis='y2'
                 ),
                 secondary_y=True
             )
         
-        # Update layout
+        # Update layout with benchmark ticker
         fig.update_layout(
-            title=f'{stock} Price Movement vs {benchmark_name or "Market"}',
+            title=f'{stock} Price Movement vs {benchmark_name or "No Benchmark"}',
             xaxis_title='Date',
             yaxis_title='Price (USD)',
             yaxis2_title='Change (%)',
