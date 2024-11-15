@@ -44,10 +44,6 @@ class DashboardLayout:
                 type="circle",
                 children=[
                     html.Div([
-                        # Company Overview Section
-                        html.Div(id=DashboardLayout._create_component_id('company-overview', user_id),
-                                className='company-overview-section'),
-                        
                         # Key metrics cards
                         html.Div([
                             html.Div(id=DashboardLayout._create_component_id('current-price-card', user_id),
@@ -65,6 +61,10 @@ class DashboardLayout:
                             html.H3("Price Analysis & Recommendation"),
                             html.Div(id=DashboardLayout._create_component_id('recommendation-container', user_id))
                         ], className='analysis-container'),
+                        
+                        # Company Overview Section
+                        html.Div(id=DashboardLayout._create_component_id('company-overview', user_id),
+                                className='company-overview-section'),
                         
                         # Charts section
                         html.Div([
