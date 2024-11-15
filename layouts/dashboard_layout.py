@@ -1,6 +1,7 @@
 # layouts/dashboard_layout.py
 from dash import dcc, html
 from typing import Dict, Optional
+from components.ml_components import create_ml_prediction_card
 
 class DashboardLayout:
     """Class for defining the main dashboard layout"""
@@ -61,6 +62,13 @@ class DashboardLayout:
                             html.H3("Price Analysis & Recommendation"),
                             html.Div(id=DashboardLayout._create_component_id('recommendation-container', user_id))
                         ], className='analysis-container'),
+                        
+                        # ML Predictions Section
+                        html.Div(
+                            id=DashboardLayout._create_component_id('ml-predictions', user_id),
+                            className='ml-predictions-section',
+                            children=create_ml_prediction_card(user_id)
+                        ),
                         
                         # Company Overview Section
                         html.Div(id=DashboardLayout._create_component_id('company-overview', user_id),

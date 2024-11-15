@@ -594,3 +594,322 @@ body {
         border: 1px solid #e5e7eb;
     }
 }
+
+/* ML Prediction Card Styles */
+.ml-prediction-card {
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    padding: 20px;
+    margin: 20px 0;
+}
+
+.ml-card-content {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.metrics-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 20px;
+    margin-top: 15px;
+}
+
+.signal-container, .metric-container {
+    background: #f8f9fa;
+    padding: 15px;
+    border-radius: 6px;
+    text-align: center;
+}
+
+.signal-strong-buy { color: #2ecc71; font-weight: bold; }
+.signal-buy { color: #27ae60; }
+.signal-hold { color: #f1c40f; }
+.signal-sell { color: #e74c3c; }
+.signal-strong-sell { color: #c0392b; font-weight: bold; }
+
+.charts-container {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 20px;
+}
+
+@media (min-width: 1200px) {
+    .charts-container {
+        grid-template-columns: 2fr 1fr;
+    }
+}
+
+.prediction-chart, .feature-importance-chart {
+    background: white;
+    border-radius: 6px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+
+.performance-metrics {
+    background: #f8f9fa;
+    padding: 20px;
+    border-radius: 6px;
+}
+
+.metrics-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 20px;
+    margin-top: 15px;
+}
+
+.model-metrics {
+    text-align: center;
+    padding: 15px;
+    background: white;
+    border-radius: 6px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+
+.model-metrics h5 {
+    color: #2c3e50;
+    margin-bottom: 10px;
+}
+
+.model-metrics p {
+    margin: 5px 0;
+    color: #34495e;
+}
+
+/* ML Predictions Section */
+.ml-predictions-section {
+    background: white;
+    padding: 1.5rem;
+    border-radius: 0.5rem;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    margin-bottom: 2rem;
+}
+
+.ml-predictions-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.5rem;
+}
+
+.ml-predictions-header h3 {
+    margin: 0;
+    color: #1f2937;
+    font-size: 1.25rem;
+    font-weight: 600;
+}
+
+.ml-predictions-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 1.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.prediction-card {
+    background: #f9fafb;
+    padding: 1.25rem;
+    border-radius: 0.375rem;
+    border: 1px solid #e5e7eb;
+}
+
+.prediction-card h4 {
+    margin: 0 0 1rem 0;
+    color: #374151;
+    font-size: 1rem;
+    font-weight: 600;
+}
+
+.prediction-value {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #1f2937;
+    margin-bottom: 0.5rem;
+}
+
+.prediction-interval {
+    font-size: 0.875rem;
+    color: #6b7280;
+    margin-bottom: 1rem;
+}
+
+.feature-importance {
+    margin-top: 1.5rem;
+}
+
+.feature-importance h4 {
+    margin-bottom: 1rem;
+}
+
+.feature-bar {
+    display: flex;
+    align-items: center;
+    margin-bottom: 0.5rem;
+}
+
+.feature-name {
+    flex: 0 0 150px;
+    font-size: 0.875rem;
+    color: #4b5563;
+}
+
+.feature-value-bar {
+    flex: 1;
+    height: 8px;
+    background: #e5e7eb;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.feature-value-fill {
+    height: 100%;
+    background: #3b82f6;
+    transition: width 0.3s ease-in-out;
+}
+
+.feature-value {
+    margin-left: 1rem;
+    font-size: 0.875rem;
+    color: #4b5563;
+    min-width: 50px;
+    text-align: right;
+}
+
+.model-metrics {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 1rem;
+    margin-top: 1.5rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid #e5e7eb;
+}
+
+.metric-item {
+    text-align: center;
+}
+
+.metric-label {
+    font-size: 0.875rem;
+    color: #6b7280;
+    margin-bottom: 0.25rem;
+}
+
+.metric-value {
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: #1f2937;
+}
+
+.signal-indicator {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.25rem 0.75rem;
+    border-radius: 9999px;
+    font-size: 0.875rem;
+    font-weight: 500;
+    margin-top: 1rem;
+}
+
+.signal-buy {
+    background-color: #dcfce7;
+    color: #166534;
+}
+
+.signal-sell {
+    background-color: #fee2e2;
+    color: #991b1b;
+}
+
+.signal-hold {
+    background-color: #f3f4f6;
+    color: #4b5563;
+}
+
+/* ML Prediction Styles */
+.ml-prediction-container {
+    background: white;
+    border-radius: 8px;
+    padding: 20px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.model-insights-container {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    margin-top: 20px;
+}
+
+.model-performance-container {
+    background: #f8f9fa;
+    border-radius: 8px;
+    padding: 20px;
+}
+
+.metrics-title {
+    font-size: 1.2rem;
+    color: #2c3e50;
+    margin: 0;
+}
+
+.metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px;
+    margin-top: 15px;
+}
+
+.metric-container {
+    background: white;
+    border-radius: 6px;
+    padding: 15px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    transition: transform 0.2s;
+    position: relative;
+}
+
+.metric-container:hover {
+    transform: translateY(-2px);
+    z-index: 2;
+}
+
+.metric-label {
+    font-size: 0.9rem;
+    color: #6c757d;
+    margin: 0;
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.metric-value {
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: #2c3e50;
+    margin: 5px 0 0 0;
+}
+
+/* Ensure tooltips are always on top */
+.dash-tooltip {
+    z-index: 9999 !important;
+    position: relative !important;
+}
+
+/* Add spacing between metric items */
+.metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 20px;
+    margin-top: 15px;
+    position: relative;
+}
+
+/* Add some breathing room for the tooltip trigger icon */
+.fa-question-circle {
+    margin-left: 5px;
+    cursor: help;
+}

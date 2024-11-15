@@ -12,8 +12,10 @@ from datetime import datetime, timedelta
 
 from services.stock_data_service import StockDataService
 from services.analysis_service import AnalysisService
+from services.ml_service import MLService
 from components.dashboard_components import DashboardComponents
 from components.charts import ChartComponents
+from components.ml_components import create_ml_prediction_card
 from technical_indicators import TechnicalIndicators
 
 class DashboardCallbacks:
@@ -54,7 +56,7 @@ class DashboardCallbacks:
         return data_age > refresh_thresholds.get(timeframe, timedelta(hours=1))
 
     def register_callbacks(self, app):
-        """Register all callbacks for the dashboard with improved refresh handling"""
+        """Register all dashboard callbacks"""
         
         @app.callback(
             [Output('benchmark-dropdown', 'value'),
@@ -276,6 +278,41 @@ class DashboardCallbacks:
                         className="benchmark-status-error"
                     )
                 ]
+
+        @app.callback(
+            Output({'type': 'ml-predictions', 'user_id': ALL}, 'children'),
+            [Input('stock-input', 'value'),
+             Input('timeframe-dropdown', 'value')]
+        )
+        def update_ml_predictions(symbol: str, timeframe: str) -> dict:
+            """Update ML predictions when stock symbol or timeframe changes"""
+            if not symbol:
+                raise PreventUpdate
+
+            try:
+                symbol = symbol.strip().upper()
+                
+                # Get stock data based on the current timeframe
+                df = StockDataService.fetch_stock_data(symbol, timeframe)
+                
+                if df is None or df.empty:
+                    self.logger.warning(f"No data available for {symbol}")
+                    return [html.Div("No data available", className="error-message")] * len(callback_context.outputs_list)
+
+                # Get ML predictions
+                ml_service = MLService()
+                predictions = ml_service.get_predictions(df)
+                
+                if not predictions or 'predictions' not in predictions:
+                    self.logger.warning(f"Could not generate predictions for {symbol}")
+                    return [html.Div("Could not generate predictions", className="error-message")] * len(callback_context.outputs_list)
+                
+                # Create prediction cards
+                return [create_ml_prediction_card(predictions)] * len(callback_context.outputs_list)
+                
+            except Exception as e:
+                self.logger.error(f"Error updating ML predictions: {str(e)}")
+                return [html.Div(f"Error: {str(e)}", className="error-message")] * len(callback_context.outputs_list)
 
         # Additional callback for interval-based refresh during market hours
         @app.callback(
