@@ -312,94 +312,190 @@ class DashboardComponents:
                             }
                         ),
                         html.Div([
-                            # Current Price
+                            # Current Price with Position Indicator
                             html.Div([
                                 html.Div(
                                     "Current Price",
                                     className='label',
                                     style={'color': '#6b7280', 'fontSize': '14px'}
                                 ),
-                                html.Div(
-                                    f"${price_targets['current_price']:.2f}",
-                                    className='value',
-                                    style={
-                                        'color': '#1f2937',
-                                        'fontSize': '16px',
-                                        'fontWeight': '600'
-                                    }
-                                )
-                            ], className='price-target-row', style={'marginBottom': '12px'}),
+                                html.Div([
+                                    html.Span(
+                                        f"${price_targets['current_price']:.2f}",
+                                        style={
+                                            'color': '#1f2937',
+                                            'fontSize': '16px',
+                                            'fontWeight': '600',
+                                            'marginRight': '8px'
+                                        }
+                                    ),
+                                    # Position indicator
+                                    html.Span(
+                                        "●",  # Dot indicator
+                                        style={
+                                            'color': '#10b981' if price_targets['current_price'] > price_targets['technical_target']
+                                                    else '#ef4444' if price_targets['current_price'] < price_targets['technical_target']
+                                                    else '#f59e0b',
+                                            'fontSize': '16px',
+                                            'marginRight': '4px'
+                                        }
+                                    )
+                                ], style={'display': 'flex', 'alignItems': 'center'})
+                            ], className='price-target-row', style={'marginBottom': '16px'}),
                             
-                            # Technical Target
+                            # Technical Target with Trend Arrow
                             html.Div([
                                 html.Div(
                                     "Technical Target",
                                     className='label',
                                     style={'color': '#6b7280', 'fontSize': '14px'}
                                 ),
-                                html.Div(
-                                    f"${price_targets['technical_target']:.2f}",
-                                    className='value',
-                                    style={
-                                        'color': '#1f2937',
-                                        'fontSize': '16px',
-                                        'fontWeight': '600'
-                                    }
-                                )
-                            ], className='price-target-row', style={'marginBottom': '12px'}),
+                                html.Div([
+                                    html.Span(
+                                        f"${price_targets['technical_target']:.2f}",
+                                        style={
+                                            'color': '#1f2937',
+                                            'fontSize': '16px',
+                                            'fontWeight': '600',
+                                            'marginRight': '8px'
+                                        }
+                                    ),
+                                    # Percentage difference
+                                    html.Span(
+                                        f"({((price_targets['technical_target'] - price_targets['current_price']) / price_targets['current_price'] * 100):.1f}%)",
+                                        style={
+                                            'color': '#10b981' if price_targets['technical_target'] > price_targets['current_price']
+                                                    else '#ef4444',
+                                            'fontSize': '14px'
+                                        }
+                                    ),
+                                    # Trend arrow
+                                    html.I(
+                                        className=f"fas fa-{'arrow-up' if price_targets['technical_target'] > price_targets['current_price'] else 'arrow-down'}",
+                                        style={
+                                            'color': '#10b981' if price_targets['technical_target'] > price_targets['current_price']
+                                                    else '#ef4444',
+                                            'marginLeft': '8px'
+                                        }
+                                    )
+                                ], style={'display': 'flex', 'alignItems': 'center'})
+                            ], className='price-target-row', style={'marginBottom': '16px'}),
                             
-                            # Support Level
+                            # Support and Resistance Progress Bar
                             html.Div([
-                                html.Div(
-                                    "Support Level",
-                                    className='label',
-                                    style={'color': '#6b7280', 'fontSize': '14px'}
-                                ),
-                                html.Div(
-                                    f"${price_targets['support_level']:.2f}",
-                                    className='value',
-                                    style={
-                                        'color': '#1f2937',
-                                        'fontSize': '16px',
-                                        'fontWeight': '600'
-                                    }
-                                )
-                            ], className='price-target-row', style={'marginBottom': '12px'}),
+                                html.Div([
+                                    html.Div(
+                                        "Price Range",
+                                        className='label',
+                                        style={
+                                            'color': '#6b7280',
+                                            'fontSize': '14px',
+                                            'marginRight': '12px',
+                                            'minWidth': '80px'
+                                        }
+                                    ),
+                                    # Progress bar container with right alignment
+                                    html.Div([
+                                        # Support level
+                                        html.Div(
+                                            f"${price_targets['support_level']:.2f}",
+                                            style={
+                                                'position': 'absolute',
+                                                'left': '0',
+                                                'bottom': '-20px',
+                                                'fontSize': '12px',
+                                                'color': '#1f2937'
+                                            }
+                                        ),
+                                        # Current price marker
+                                        html.Div(
+                                            style={
+                                                'position': 'absolute',
+                                                'left': f"{((price_targets['current_price'] - price_targets['support_level']) / (price_targets['resistance_level'] - price_targets['support_level']) * 100)}%",
+                                                'top': '-12px',
+                                                'transform': 'translateX(-50%)',
+                                                'width': '2px',
+                                                'height': '24px',
+                                                'backgroundColor': '#1f2937'
+                                            }
+                                        ),
+                                        # Progress bar
+                                        html.Div(
+                                            style={
+                                                'height': '6px',
+                                                'backgroundColor': '#e5e7eb',
+                                                'borderRadius': '3px',
+                                                'position': 'relative',
+                                                'width': '150px'  # Fixed width for the progress bar
+                                            }
+                                        ),
+                                        # Resistance level
+                                        html.Div(
+                                            f"${price_targets['resistance_level']:.2f}",
+                                            style={
+                                                'position': 'absolute',
+                                                'right': '0',
+                                                'bottom': '-20px',
+                                                'fontSize': '12px',
+                                                'color': '#1f2937'
+                                            }
+                                        )
+                                    ], style={
+                                        'position': 'relative',
+                                        'height': '6px',
+                                        'marginTop': '20px',
+                                        'marginBottom': '24px'
+                                    })
+                                ], style={
+                                    'display': 'flex',
+                                    'alignItems': 'flex-start',
+                                    'marginBottom': '8px',
+                                    'justifyContent': 'space-between',  # This will push the progress bar to the right
+                                    'width': '100%'  # Ensure the container takes full width
+                                })
+                            ], className='price-target-row', style={'marginBottom': '16px'}),  # Changed to price-target-row for consistent styling
                             
-                            # Resistance Level
-                            html.Div([
-                                html.Div(
-                                    "Resistance Level",
-                                    className='label',
-                                    style={'color': '#6b7280', 'fontSize': '14px'}
-                                ),
-                                html.Div(
-                                    f"${price_targets['resistance_level']:.2f}",
-                                    className='value',
-                                    style={
-                                        'color': '#1f2937',
-                                        'fontSize': '16px',
-                                        'fontWeight': '600'
-                                    }
-                                )
-                            ], className='price-target-row', style={'marginBottom': '12px'}),
-                            
-                            # Volatility Range
+                            # Volatility Range with Visual Indicator
                             html.Div([
                                 html.Div(
                                     "Volatility Range",
                                     className='label',
                                     style={'color': '#6b7280', 'fontSize': '14px'}
                                 ),
-                                html.Div(
-                                    f"${price_targets['volatility_range'][0]:.2f} - ${price_targets['volatility_range'][1]:.2f}",
-                                    className='value',
-                                    style={
-                                        'color': '#1f2937',
-                                        'fontSize': '16px',
-                                        'fontWeight': '600'
-                                    }
-                                )
+                                html.Div([
+                                    html.Span(
+                                        f"${price_targets['volatility_range'][0]:.2f} - ${price_targets['volatility_range'][1]:.2f}",
+                                        style={
+                                            'color': '#1f2937',
+                                            'fontSize': '16px',
+                                            'fontWeight': '600',
+                                            'marginRight': '8px'
+                                        }
+                                    ),
+                                    # Volatility indicator
+                                    html.Div(
+                                        style={
+                                            'width': '50px',
+                                            'height': '4px',
+                                            'backgroundColor': '#e5e7eb',
+                                            'borderRadius': '2px',
+                                            'position': 'relative',
+                                            'overflow': 'hidden'
+                                        },
+                                        children=[
+                                            html.Div(
+                                                style={
+                                                    'position': 'absolute',
+                                                    'left': '0',
+                                                    'top': '0',
+                                                    'height': '100%',
+                                                    'width': f"{((price_targets['volatility_range'][1] - price_targets['volatility_range'][0]) / price_targets['current_price'] * 100)}%",
+                                                    'backgroundColor': '#6366f1'
+                                                }
+                                            )
+                                        ]
+                                    )
+                                ], style={'display': 'flex', 'alignItems': 'center'})
                             ], className='price-target-row')
                         ], className='price-targets-grid')
                     ], className='price-targets-section', style={
