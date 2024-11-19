@@ -62,20 +62,22 @@ class DashboardCallbacks:
             [Output('benchmark-dropdown', 'value'),
              Output('benchmark-dropdown-backtesting', 'value')],
             [Input('analyze-button', 'n_clicks'),
-             Input('stock-input', 'n_submit'),
-             Input('timeframe-dropdown', 'value')],
+             Input('stock-input', 'n_submit')],
             [State('benchmark-dropdown', 'value'),
-             State('user-id', 'data')]
+             State('user-id', 'data'),
+             State('timeframe-dropdown', 'value')]
         )
-        def refresh_benchmark_data(n_clicks, n_submit, timeframe, current_benchmark, user_id):
+        def refresh_benchmark_data(n_clicks, n_submit, current_benchmark, user_id, timeframe):
             """Refresh benchmark data when analyze is clicked"""
             ctx = callback_context
             if not ctx.triggered:
                 raise PreventUpdate
                 
             trigger_id = ctx.triggered[0]['prop_id'].split('.')[0]
-            
-            if trigger_id in ['analyze-button', 'stock-input']:
+            if trigger_id not in ['analyze-button', 'stock-input']:
+                raise PreventUpdate
+                
+            if trigger_id == 'analyze-button':
                 # Update benchmark data
                 if current_benchmark:
                     try:
@@ -99,12 +101,12 @@ class DashboardCallbacks:
              Output('ticker-error', 'children'),
              Output('benchmark-error', 'children')],
             [Input('analyze-button', 'n_clicks'),
-             Input('stock-input', 'n_submit'),
-             Input('timeframe-dropdown', 'value'),
-             Input('benchmark-dropdown', 'value')],
-            [State('stock-input', 'value')]
+             Input('stock-input', 'n_submit')],
+            [State('stock-input', 'value'),
+             State('timeframe-dropdown', 'value'),
+             State('benchmark-dropdown', 'value')]
         )
-        def validate_and_trigger_update(n_clicks, n_submit, timeframe, benchmark_ticker, ticker_value):
+        def validate_and_trigger_update(n_clicks, n_submit, ticker_value, timeframe, benchmark_ticker):
             """Validate input and trigger data refresh when needed"""
             ctx = callback_context
             if not ctx.triggered:
@@ -156,10 +158,10 @@ class DashboardCallbacks:
              Output({'type': 'company-overview', 'user_id': MATCH}, 'children'),
              Output({'type': 'benchmark-status', 'user_id': MATCH}, 'children')],
             [Input('analyze-button', 'n_clicks'),
-             Input('stock-input', 'n_submit'),
-             Input('timeframe-dropdown', 'value'),
-             Input('benchmark-dropdown', 'value')],
-            [State('stock-input', 'value'),
+             Input('stock-input', 'n_submit')],
+            [State('timeframe-dropdown', 'value'),
+             State('benchmark-dropdown', 'value'),
+             State('stock-input', 'value'),
              State('user-id', 'data')]
         )
         def update_dashboard(n_clicks, n_submit, timeframe, benchmark_ticker, ticker, user_id):
