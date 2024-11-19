@@ -21,16 +21,16 @@ METRIC_DEFINITIONS = {
     
     'sharpe_ratio': {
         'title': 'Sharpe Ratio',
-        'explanation': '(Return - Risk Free Rate) / Standard Deviation',
+        'explanation': 'Measures how much extra return you get for taking on more risk',
         'interpretation': '<0.5: Poor, 0.5-1: Fair, 1-2: Good, >2: Excellent',
-        'example': '1.5 means excess return is 1.5x the volatility'
+        'example': '1.5 means you\'re well-compensated for the risk taken'
     },
     
     'sortino_ratio': {
         'title': 'Sortino Ratio',
-        'explanation': 'Like Sharpe but only penalizes downside volatility',
-        'interpretation': '<1: High downside risk, 1-2: Good, >2: Excellent',
-        'example': '2.0 means good returns with limited downside risk'
+        'explanation': 'Similar to Sharpe, but focuses only on harmful volatility',
+        'interpretation': '<1: High risk of losses, 1-2: Good, >2: Excellent',
+        'example': '2.0 means strong returns without major downside risks'
     },
 
     # Technical Indicators
@@ -51,9 +51,9 @@ METRIC_DEFINITIONS = {
     # Risk Metrics
     'var_95': {
         'title': 'Value at Risk (95%)',
-        'explanation': 'Expected maximum loss within 95% confidence interval',
-        'interpretation': 'Larger negative values indicate higher risk',
-        'example': '-2% means 95% chance of losing no more than 2% daily'
+        'explanation': 'Your likely worst-case daily loss scenario',
+        'interpretation': 'Larger negative numbers mean higher risk',
+        'example': '-2% means you probably won\'t lose more than 2% in a day'
     },
     
     'max_drawdown': {
@@ -76,14 +76,56 @@ METRIC_DEFINITIONS = {
         'explanation': 'Average prediction error in price units',
         'interpretation': 'Lower is better, scaled to price magnitude',
         'example': '$2.50 RMSE means typical error is ±$2.50'
+    },
+
+    'calmar_ratio': {
+        'title': 'Calmar Ratio',
+        'explanation': 'Compares returns to your worst possible loss',
+        'interpretation': '<1: Poor, 1-3: Good, >3: Excellent',
+        'example': '2.5 means your returns are 2.5x larger than your worst loss'
+    },
+
+    'treynor_ratio': {
+        'title': 'Treynor Ratio',
+        'explanation': 'Shows return compared to market risk taken',
+        'interpretation': 'Higher numbers mean better market risk management',
+        'example': '0.15 means 15% extra return for each unit of market risk'
+    },
+
+    'capture_ratio_up': {
+        'title': 'Upside Capture Ratio',
+        'explanation': 'Measures performance relative to benchmark in up markets',
+        'interpretation': '>100%: Outperforms in up markets, <100%: Underperforms',
+        'example': '120% means 20% better returns than benchmark in up markets'
+    },
+
+    'capture_ratio_down': {
+        'title': 'Downside Capture Ratio',
+        'explanation': 'Measures performance relative to benchmark in down markets',
+        'interpretation': '<100%: Better downside protection, >100%: More downside risk',
+        'example': '80% means 20% less loss than benchmark in down markets'
+    },
+
+    'omega_ratio': {
+        'title': 'Omega Ratio',
+        'explanation': 'Compares the size and frequency of gains versus losses',
+        'interpretation': '>1: More gains than losses, <1: More losses than gains',
+        'example': '1.5 means your gains are 50% bigger than your losses'
+    },
+
+    'tail_ratio': {
+        'title': 'Tail Ratio',
+        'explanation': 'Compares your best days to your worst days',
+        'interpretation': '>1: Better upside potential, <1: More downside risk',
+        'example': '1.2 means your best days are 20% better than your worst days'
     }
 }
 
 SIGNAL_DEFINITIONS = {
     'Strong Buy': {
-        'explanation': 'Multiple technical and risk metrics align positively',
-        'interpretation': 'Highly favorable risk/reward ratio',
-        'example': 'Strong technicals + low volatility + positive momentum'
+        'explanation': 'Multiple indicators suggest this is a good opportunity',
+        'interpretation': 'Very attractive risk vs. reward balance',
+        'example': 'Strong performance + low risk + positive momentum'
     },
     'Buy': {
         'explanation': 'More positive signals than negative',
@@ -110,18 +152,18 @@ SIGNAL_DEFINITIONS = {
 # Risk level definitions based on the analysis service thresholds
 RISK_LEVEL_DEFINITIONS = {
     'Low': {
-        'explanation': 'Key risk metrics within normal ranges',
-        'interpretation': 'Suitable for most investment strategies',
-        'example': 'Volatility < 15%, healthy Sharpe ratio, moderate drawdowns'
+        'explanation': 'All risk measurements look healthy',
+        'interpretation': 'Generally safe for most investors',
+        'example': 'Stable performance with minimal surprises'
     },
     'Medium': {
-        'explanation': 'Some risk metrics showing elevated levels',
-        'interpretation': 'Consider position sizing and monitoring',
-        'example': 'Volatility 15-25% or larger drawdowns'
+        'explanation': 'Some risk indicators are elevated',
+        'interpretation': 'Watch position size and monitor closely',
+        'example': 'More price swings or larger drops than normal'
     },
     'High': {
-        'explanation': 'Multiple risk metrics at concerning levels',
-        'interpretation': 'Requires active risk management',
-        'example': 'High volatility, poor Sharpe ratio, large drawdowns'
+        'explanation': 'Multiple warning signs in risk metrics',
+        'interpretation': 'Needs careful risk management',
+        'example': 'Large price swings and significant drops possible'
     }
 }

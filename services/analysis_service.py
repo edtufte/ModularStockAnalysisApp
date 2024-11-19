@@ -497,6 +497,32 @@ class AnalysisService:
             benchmark_variance = benchmark_returns.var()
             beta = covariance / benchmark_variance if benchmark_variance != 0 else 1
             
+            # Calculate additional risk metrics
+            daily_returns = portfolio_returns.dropna()
+            benchmark_returns = benchmark_returns.dropna()
+
+            # Calculate Calmar Ratio
+            calmar_ratio = abs(total_return / max_drawdown) if max_drawdown != 0 else np.nan
+
+            # Calculate up/down capture ratios
+            up_market_returns = daily_returns[benchmark_returns > 0]
+            down_market_returns = daily_returns[benchmark_returns < 0]
+            up_market_benchmark = benchmark_returns[benchmark_returns > 0]
+            down_market_benchmark = benchmark_returns[benchmark_returns < 0]
+
+            capture_ratio_up = (up_market_returns.mean() / up_market_benchmark.mean() * 100) if not up_market_benchmark.empty else np.nan
+            capture_ratio_down = (down_market_returns.mean() / down_market_benchmark.mean() * 100) if not down_market_benchmark.empty else np.nan
+
+            # Calculate Treynor Ratio
+            treynor_ratio = (total_return - risk_free_rate) / beta if beta != 0 else np.nan
+
+            # Calculate Omega Ratio (using 0 as threshold)
+            threshold = 0
+            omega_ratio = np.sum(daily_returns[daily_returns > threshold]) / abs(np.sum(daily_returns[daily_returns < threshold])) if np.sum(daily_returns[daily_returns < threshold]) != 0 else np.nan
+
+            # Calculate Tail Ratio
+            tail_ratio = abs(np.percentile(daily_returns, 95)) / abs(np.percentile(daily_returns, 5)) if np.percentile(daily_returns, 5) != 0 else np.nan
+
             results = {
                 "portfolio_return": total_return,
                 "benchmark_return": benchmark_return,
@@ -518,7 +544,13 @@ class AnalysisService:
                 "annualized_return": (1 + total_return) ** (252/len(portfolio_returns)) - 1,
                 "annualized_benchmark_return": (1 + benchmark_return) ** (252/len(benchmark_returns)) - 1,
                 "tracking_error": (portfolio_returns - benchmark_returns).std() * np.sqrt(252),
-                "information_ratio": alpha / ((portfolio_returns - benchmark_returns).std() * np.sqrt(252))
+                "information_ratio": alpha / ((portfolio_returns - benchmark_returns).std() * np.sqrt(252)),
+                'calmar_ratio': calmar_ratio,
+                'treynor_ratio': treynor_ratio,
+                'capture_ratio_up': capture_ratio_up,
+                'capture_ratio_down': capture_ratio_down,
+                'omega_ratio': omega_ratio,
+                'tail_ratio': tail_ratio
             }
             
             logger.info(f"Backtesting results: {results}")

@@ -974,3 +974,42 @@ body {
 .dash-tooltip:after {
     border-bottom-color: rgba(50, 50, 50, 0.95) !important;
 }
+
+/* Add to existing styles */
+.fa-info-circle {
+    margin-left: 0.5rem;
+    color: #6b7280;
+    cursor: help;
+}
+
+.fa-info-circle:hover {
+    color: #3b82f6;
+}
+
+/* Ensure tooltips are always visible */
+.dash-tooltip {
+    z-index: 1070 !important;
+}
+
+/* Add these styles */
+.backtesting-parameters-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.backtesting-left-column,
+.backtesting-right-column {
+    background: white;
+    padding: 1.5rem;
+    border-radius: 0.5rem;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+/* Add to the existing media query for responsiveness */
+@media (max-width: 768px) {
+    .backtesting-parameters-grid {
+        grid-template-columns: 1fr;
+    }
+}

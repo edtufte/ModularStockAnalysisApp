@@ -4,6 +4,7 @@ from dash.exceptions import PreventUpdate
 from dash import html
 import logging
 from datetime import datetime, timedelta
+import dash_bootstrap_components as dbc
 import pandas as pd
 from models.portfolio import Portfolio
 from services.analysis_service import AnalysisService
@@ -231,18 +232,26 @@ def register_callbacks(app, db):
                 })
                 fig['layout']['title'] = 'Portfolio Performance vs Benchmark'
             
-            # Create metrics table
+            # Create metrics table with tooltips
             metrics_table = html.Div([
                 html.H4("Backtesting Results", className="subsection-title"),
                 html.Table([
                     html.Tbody([
                         # Portfolio Returns Section
                         html.Tr([
-                            html.Td("Portfolio Total Return", style={'fontWeight': 'bold'}),
+                            html.Td([
+                                "Portfolio Total Return",
+                                html.I(className="fas fa-info-circle ml-1", 
+                                      id="total-return-tooltip")
+                            ], style={'fontWeight': 'bold'}),
                             html.Td(f"{results['portfolio_return']*100:.2f}%")
                         ]),
                         html.Tr([
-                            html.Td("Portfolio Annualized Return", style={'fontWeight': 'bold'}),
+                            html.Td([
+                                "Portfolio Annualized Return",
+                                html.I(className="fas fa-info-circle ml-1", 
+                                      id="annualized-return-tooltip")
+                            ], style={'fontWeight': 'bold'}),
                             html.Td(f"{results['annualized_return']*100:.2f}%")
                         ]),
                         
@@ -260,31 +269,243 @@ def register_callbacks(app, db):
                         # Risk Metrics Section
                         html.Tr([html.Td("", colSpan=2, style={'borderTop': '1px solid #e5e7eb'})]),  # Divider
                         html.Tr([
-                            html.Td("Alpha", style={'fontWeight': 'bold'}),
+                            html.Td([
+                                "Alpha",
+                                html.I(className="fas fa-info-circle ml-1", id="alpha-tooltip")
+                            ], style={'fontWeight': 'bold'}),
                             html.Td(f"{results['alpha']*100:.2f}%")
                         ]),
                         html.Tr([
-                            html.Td("Beta", style={'fontWeight': 'bold'}),
+                            html.Td([
+                                "Beta",
+                                html.I(className="fas fa-info-circle ml-1", id="beta-tooltip")
+                            ], style={'fontWeight': 'bold'}),
                             html.Td(f"{results['beta']:.2f}")
                         ]),
                         html.Tr([
-                            html.Td("Sharpe Ratio", style={'fontWeight': 'bold'}),
+                            html.Td([
+                                "Sharpe Ratio",
+                                html.I(className="fas fa-info-circle ml-1", id="sharpe-tooltip")
+                            ], style={'fontWeight': 'bold'}),
                             html.Td(f"{results['sharpe_ratio']:.2f}")
                         ]),
                         html.Tr([
-                            html.Td("Volatility", style={'fontWeight': 'bold'}),
+                            html.Td([
+                                "Volatility",
+                                html.I(className="fas fa-info-circle ml-1", id="volatility-tooltip")
+                            ], style={'fontWeight': 'bold'}),
                             html.Td(f"{results['volatility']*100:.2f}%")
                         ]),
                         html.Tr([
-                            html.Td("Maximum Drawdown", style={'fontWeight': 'bold'}),
+                            html.Td([
+                                "Maximum Drawdown",
+                                html.I(className="fas fa-info-circle ml-1", id="drawdown-tooltip")
+                            ], style={'fontWeight': 'bold'}),
                             html.Td(f"{results['max_drawdown']*100:.2f}%")
                         ]),
+                        # Advanced metrics section
                         html.Tr([
-                            html.Td("Information Ratio", style={'fontWeight': 'bold'}),
-                            html.Td(f"{results['information_ratio']:.2f}")
+                            html.Td([
+                                "Calmar Ratio",
+                                html.I(className="fas fa-info-circle ml-1", id="calmar-tooltip")
+                            ], style={'fontWeight': 'bold'}),
+                            html.Td(f"{results['calmar_ratio']:.2f}")
+                        ]),
+                        html.Tr([
+                            html.Td([
+                                "Treynor Ratio",
+                                html.I(className="fas fa-info-circle ml-1", id="treynor-tooltip")
+                            ], style={'fontWeight': 'bold'}),
+                            html.Td(f"{results['treynor_ratio']:.2f}")
+                        ]),
+                        html.Tr([
+                            html.Td([
+                                "Upside Capture",
+                                html.I(className="fas fa-info-circle ml-1", id="upside-capture-tooltip")
+                            ], style={'fontWeight': 'bold'}),
+                            html.Td(f"{results['capture_ratio_up']:.1f}%")
+                        ]),
+                        html.Tr([
+                            html.Td([
+                                "Downside Capture",
+                                html.I(className="fas fa-info-circle ml-1", id="downside-capture-tooltip")
+                            ], style={'fontWeight': 'bold'}),
+                            html.Td(f"{results['capture_ratio_down']:.1f}%")
+                        ]),
+                        html.Tr([
+                            html.Td([
+                                "Omega Ratio",
+                                html.I(className="fas fa-info-circle ml-1", id="omega-tooltip")
+                            ], style={'fontWeight': 'bold'}),
+                            html.Td(f"{results['omega_ratio']:.2f}")
+                        ]),
+                        html.Tr([
+                            html.Td([
+                                "Tail Ratio",
+                                html.I(className="fas fa-info-circle ml-1", id="tail-tooltip")
+                            ], style={'fontWeight': 'bold'}),
+                            html.Td(f"{results['tail_ratio']:.2f}")
                         ])
                     ])
-                ], className="results-table")
+                ], className="results-table"),
+                
+                # Add tooltip components with custom styling
+                dbc.Tooltip(
+                    "Total return of the portfolio over the selected period",
+                    target="total-return-tooltip",
+                    placement="right",
+                    style={
+                        "backgroundColor": "rgba(0, 0, 0, 0.8)",
+                        "color": "white",
+                        "fontSize": "0.8rem",
+                        "maxWidth": "200px"
+                    }
+                ),
+                dbc.Tooltip(
+                    "Annualized return of the portfolio over the selected period",
+                    target="annualized-return-tooltip",
+                    placement="right",
+                    style={
+                        "backgroundColor": "rgba(0, 0, 0, 0.8)",
+                        "color": "white",
+                        "fontSize": "0.8rem",
+                        "maxWidth": "200px"
+                    }
+                ),
+                dbc.Tooltip(
+                    "Measures portfolio's risk-adjusted excess return relative to benchmark",
+                    target="info-ratio-tooltip",
+                    placement="right",
+                    style={
+                        "backgroundColor": "rgba(0, 0, 0, 0.8)",
+                        "color": "white",
+                        "fontSize": "0.8rem",
+                        "maxWidth": "200px"
+                    }
+                ),
+                # Risk metrics tooltips
+                dbc.Tooltip(
+                    "Excess return of portfolio over the risk-free rate relative to benchmark",
+                    target="alpha-tooltip",
+                    placement="right",
+                    style={
+                        "backgroundColor": "rgba(0, 0, 0, 0.8)",
+                        "color": "white",
+                        "fontSize": "0.8rem",
+                        "maxWidth": "200px"
+                    }
+                ),
+                dbc.Tooltip(
+                    "Measure of portfolio's volatility relative to the benchmark",
+                    target="beta-tooltip",
+                    placement="right",
+                    style={
+                        "backgroundColor": "rgba(0, 0, 0, 0.8)",
+                        "color": "white",
+                        "fontSize": "0.8rem",
+                        "maxWidth": "200px"
+                    }
+                ),
+                dbc.Tooltip(
+                    "Risk-adjusted return relative to the risk-free rate",
+                    target="sharpe-tooltip",
+                    placement="right",
+                    style={
+                        "backgroundColor": "rgba(0, 0, 0, 0.8)",
+                        "color": "white",
+                        "fontSize": "0.8rem",
+                        "maxWidth": "200px"
+                    }
+                ),
+                dbc.Tooltip(
+                    "Standard deviation of portfolio returns",
+                    target="volatility-tooltip",
+                    placement="right",
+                    style={
+                        "backgroundColor": "rgba(0, 0, 0, 0.8)",
+                        "color": "white",
+                        "fontSize": "0.8rem",
+                        "maxWidth": "200px"
+                    }
+                ),
+                dbc.Tooltip(
+                    "Largest peak-to-trough decline in portfolio value",
+                    target="drawdown-tooltip",
+                    placement="right",
+                    style={
+                        "backgroundColor": "rgba(0, 0, 0, 0.8)",
+                        "color": "white",
+                        "fontSize": "0.8rem",
+                        "maxWidth": "200px"
+                    }
+                ),
+                # Advanced metrics tooltips
+                dbc.Tooltip(
+                    "Annual return divided by maximum drawdown",
+                    target="calmar-tooltip",
+                    placement="right",
+                    style={
+                        "backgroundColor": "rgba(0, 0, 0, 0.8)",
+                        "color": "white",
+                        "fontSize": "0.8rem",
+                        "maxWidth": "200px"
+                    }
+                ),
+                dbc.Tooltip(
+                    "Excess return per unit of systematic risk",
+                    target="treynor-tooltip",
+                    placement="right",
+                    style={
+                        "backgroundColor": "rgba(0, 0, 0, 0.8)",
+                        "color": "white",
+                        "fontSize": "0.8rem",
+                        "maxWidth": "200px"
+                    }
+                ),
+                dbc.Tooltip(
+                    "Percentage of benchmark gains captured by portfolio",
+                    target="upside-capture-tooltip",
+                    placement="right",
+                    style={
+                        "backgroundColor": "rgba(0, 0, 0, 0.8)",
+                        "color": "white",
+                        "fontSize": "0.8rem",
+                        "maxWidth": "200px"
+                    }
+                ),
+                dbc.Tooltip(
+                    "Percentage of benchmark losses captured by portfolio",
+                    target="downside-capture-tooltip",
+                    placement="right",
+                    style={
+                        "backgroundColor": "rgba(0, 0, 0, 0.8)",
+                        "color": "white",
+                        "fontSize": "0.8rem",
+                        "maxWidth": "200px"
+                    }
+                ),
+                dbc.Tooltip(
+                    "Probability weighted ratio of gains vs losses",
+                    target="omega-tooltip",
+                    placement="right",
+                    style={
+                        "backgroundColor": "rgba(0, 0, 0, 0.8)",
+                        "color": "white",
+                        "fontSize": "0.8rem",
+                        "maxWidth": "200px"
+                    }
+                ),
+                dbc.Tooltip(
+                    "Ratio of right-tail returns to left-tail returns",
+                    target="tail-tooltip",
+                    placement="right",
+                    style={
+                        "backgroundColor": "rgba(0, 0, 0, 0.8)",
+                        "color": "white",
+                        "fontSize": "0.8rem",
+                        "maxWidth": "200px"
+                    }
+                )
             ])
             
             return metrics_table, fig

@@ -335,7 +335,7 @@ class StockDataService:
         
         try:
             start_date = datetime.now() - timedelta(days=5)
-            df = web.DataReader(ticker, 'stooq', start_date, datetime.now())
+            df = web.DataReader(ticker, 'stooq', start_date.strftime('%Y-%m-%d'), datetime.now().strftime('%Y-%m-%d'))
             if not df.empty:
                 return True, ""
         except Exception as e:
