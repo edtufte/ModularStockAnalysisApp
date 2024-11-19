@@ -23,6 +23,7 @@ class Cache:
     def _initialize_database(self):
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
+            
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS stock_data (
                     ticker TEXT,
@@ -33,6 +34,7 @@ class Cache:
                     close REAL,
                     adj_close REAL,
                     volume INTEGER,
+                    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     PRIMARY KEY (ticker, date)
                 )
             """)
@@ -45,11 +47,50 @@ class Cache:
             """)
             conn.commit()
 
+    def should_refresh_data(self, ticker: str, date: datetime) -> bool:
+        """Determine if data for a specific date should be refreshed based on age."""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT date, last_updated FROM stock_data
+                WHERE ticker = ? AND date = ?
+            """, (ticker, date.strftime("%Y-%m-%d")))
+            row = cursor.fetchone()
+            
+            if not row:
+                return True
+                
+            last_updated = datetime.strptime(row[1], "%Y-%m-%d %H:%M:%S")
+            data_date = datetime.strptime(row[0], "%Y-%m-%d")
+            current_date = datetime.now()
+            
+            # Define refresh rules based on data age
+            days_since_data = (current_date - data_date).days
+            days_since_update = (current_date - last_updated).days
+            
+            # Refresh rules:
+            # - Data less than 7 days old: refresh if older than 12 hours
+            # - Data less than 30 days old: refresh if older than 1 day
+            # - Data less than 90 days old: refresh if older than 7 days
+            # - Data less than 365 days old: refresh if older than 30 days
+            # - Older data: refresh if older than 90 days
+            if days_since_data <= 7:
+                return days_since_update > 0.5  # 12 hours
+            elif days_since_data <= 30:
+                return days_since_update > 1
+            elif days_since_data <= 90:
+                return days_since_update > 7
+            elif days_since_data <= 365:
+                return days_since_update > 30
+            else:
+                return days_since_update > 90
+
     def get_cached_data(self, ticker: str, start_date: datetime, end_date: datetime) -> Optional[pd.DataFrame]:
-        """Retrieve cached stock data with proper column names and date index."""
+        """Retrieve cached stock data, identifying which dates need refresh."""
         with sqlite3.connect(self.db_path) as conn:
             query = """
-                SELECT date, open, high, low, close, adj_close as 'Adj Close', volume 
+                SELECT date, open, high, low, close, adj_close as 'Adj Close', volume,
+                       last_updated
                 FROM stock_data
                 WHERE ticker = ? AND date BETWEEN ? AND ?
                 ORDER BY date
@@ -63,18 +104,33 @@ class Cache:
                         start_date.strftime("%Y-%m-%d"),
                         end_date.strftime("%Y-%m-%d")
                     ),
-                    parse_dates=['date']
+                    parse_dates=['date', 'last_updated']
                 )
                 
                 if not df.empty:
-                    # Rename columns to match yfinance format and set index
-                    df.columns = ['Date', 'Open', 'High', 'Low', 'Close', 'Adj Close', 'Volume']
-                    df.set_index('Date', inplace=True)
-                    return df
+                    # Create a mask for dates that need refresh
+                    dates_to_refresh = []
+                    for idx, row in df.iterrows():
+                        data_date = pd.to_datetime(row['date']).to_pydatetime()
+                        if self.should_refresh_data(ticker, data_date):
+                            dates_to_refresh.append(data_date)
+                    
+                    # Remove dates that need refresh from the DataFrame
+                    if dates_to_refresh:
+                        df = df[~df['date'].isin(dates_to_refresh)]
+                    
+                    if not df.empty:
+                        # Format DataFrame to match expected structure
+                        df.columns = ['Date', 'Open', 'High', 'Low', 'Close', 'Adj Close', 'Volume', 'last_updated']
+                        df.set_index('Date', inplace=True)
+                        df.drop('last_updated', axis=1, inplace=True)
+                        return df, dates_to_refresh
+                    
+                return None, []
                     
             except Exception as e:
                 logging.error(f"Error retrieving cached data: {str(e)}")
-            return None
+                return None, []
 
     def update_stock_data(self, ticker: str, df: pd.DataFrame):
         """Update cache with new stock data, avoiding duplicates."""
@@ -345,18 +401,11 @@ class StockDataService:
 
     @staticmethod
     def fetch_stock_data(ticker: str, timeframe: str) -> Optional[pd.DataFrame]:
-        """Fetch stock data with improved error handling and caching"""
         try:
-            logger.info(f"Fetching {timeframe} data for {ticker}")
-            
-            if not ticker or not timeframe:
-                raise ValueError("Ticker and timeframe must be provided")
-                
             target_start, target_end = StockDataService.get_date_range(timeframe)
-            logger.info(f"Target date range for {ticker}: {target_start} to {target_end}")
             
-            # Get any existing cached data within our target range
-            cached_data = StockDataService._cache.get_cached_data(
+            # Get cached data and dates needing refresh
+            cached_data, dates_to_refresh = StockDataService._cache.get_cached_data(
                 ticker, 
                 target_start,
                 target_end
@@ -364,23 +413,22 @@ class StockDataService:
             
             df_list = []
             if cached_data is not None and not cached_data.empty:
-                logger.info(f"Found cached data for {ticker} from {cached_data.index.min()} to {cached_data.index.max()}")
                 df_list.append(cached_data)
                 
-                # Calculate what ranges we're missing
+                # Calculate missing date ranges
                 missing_ranges = StockDataService.get_required_date_ranges(
                     target_start, target_end, cached_data
                 )
+                
+                # Add individual dates that need refresh
+                for date in dates_to_refresh:
+                    missing_ranges.append((date, date + timedelta(days=1)))
             else:
-                logger.info(f"No cached data found for {ticker} in target range")
                 missing_ranges = [(target_start, target_end)]
             
-            # Fetch any missing data
+            # Fetch missing data
             for start_date, end_date in missing_ranges:
-                logger.info(f"Fetching missing data for {ticker} from {start_date} to {end_date}")
-                
                 missing_df = StockDataService.fetch_from_yfinance(ticker, start_date, end_date)
-                
                 if missing_df is not None and not missing_df.empty:
                     df_list.append(missing_df)
                     StockDataService._cache.update_stock_data(ticker, missing_df)
