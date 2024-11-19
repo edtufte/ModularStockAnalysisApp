@@ -312,11 +312,61 @@ body {
 
 /* Company Overview */
 .company-overview-container {
+    position: relative;
     background: white;
     border-radius: 0.5rem;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
     padding: 1.5rem;
     margin-bottom: 2rem;
+}
+
+.company-overview-collapsed {
+    max-height: 200px;
+    overflow: hidden;
+    position: relative;
+    mask-image: linear-gradient(to bottom, black 150px, transparent 200px);
+    -webkit-mask-image: linear-gradient(to bottom, black 150px, transparent 200px);
+}
+
+.company-overview-expanded {
+    max-height: none;
+    mask-image: none;
+    -webkit-mask-image: none;
+}
+
+.toggle-overview-button {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: linear-gradient(to bottom, 
+        rgba(255,255,255,0) 0%, 
+        rgba(255,255,255,0.9) 35%, 
+        rgba(255,255,255,1) 100%);
+    padding-top: 40px;
+    padding-bottom: 10px;
+    border: none;
+    color: #3b82f6;
+    font-size: 0.875rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    transition: color 0.15s ease-in-out;
+}
+
+.company-overview-expanded .toggle-overview-button {
+    background: none;
+    padding-top: 10px;
+}
+
+.toggle-overview-button:hover {
+    color: #2563eb;
+}
+
+.toggle-overview-button i {
+    margin-left: 0.5rem;
 }
 
 .company-header {

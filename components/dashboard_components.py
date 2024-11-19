@@ -55,7 +55,7 @@ class DashboardComponents:
     
     @staticmethod
     def create_company_overview(overview: Dict[str, Any]) -> html.Div:
-        """Create company overview section with improved error handling and fallbacks"""
+        """Create collapsible company overview section with improved error handling and fallbacks"""
         try:
             # Ensure we have a valid dictionary
             if not isinstance(overview, dict):
@@ -75,7 +75,7 @@ class DashboardComponents:
             employees = overview.get('FullTimeEmployees', 'N/A')
             address = overview.get('Address', 'N/A')
 
-            return html.Div([
+            content = html.Div([
                 # Company Header
                 html.Div([
                     html.H2(name, className='company-name'),
@@ -85,62 +85,69 @@ class DashboardComponents:
                     ], className='company-tags')
                 ], className='company-header'),
                 
-                # Company Description (only if available)
+                # Collapsible content
                 html.Div([
-                    html.H4("About", className='section-subtitle'),
-                    html.P(
-                        description, 
-                        className='company-description',
-                        style={'whiteSpace': 'pre-wrap'}
-                    )
-                ], className='description-section') if description != 'N/A' else None,
-                
-                # Key Details Grid (only if we have some valid data)
-                html.Div([
-                    html.H4("Company Details", className='section-subtitle'),
+                    # Key Details Grid
                     html.Div([
-                        # Left Column
+                        html.H4("Company Details", className='section-subtitle'),
                         html.Div([
+                            # Left Column
                             html.Div([
-                                html.Strong("Industry: "),
-                                html.Span(industry)
-                            ], className='detail-row') if industry != 'N/A' else None,
+                                html.Div([
+                                    html.Strong("Industry: "),
+                                    html.Span(industry)
+                                ], className='detail-row') if industry != 'N/A' else None,
+                                html.Div([
+                                    html.Strong("Market Cap: "),
+                                    html.Span(market_cap)
+                                ], className='detail-row') if market_cap != 'N/A' else None,
+                                html.Div([
+                                    html.Strong("P/E Ratio: "),
+                                    html.Span(pe_ratio)
+                                ], className='detail-row') if pe_ratio != 'N/A' else None,
+                            ], className='details-column'),
+                            
+                            # Right Column
                             html.Div([
-                                html.Strong("Market Cap: "),
-                                html.Span(market_cap)
-                            ], className='detail-row') if market_cap != 'N/A' else None,
-                            html.Div([
-                                html.Strong("P/E Ratio: "),
-                                html.Span(pe_ratio)
-                            ], className='detail-row') if pe_ratio != 'N/A' else None,
-                        ], className='details-column'),
-                        
-                        # Right Column
-                        html.Div([
-                            html.Div([
-                                html.Strong("Dividend Yield: "),
-                                html.Span(dividend_yield)
-                            ], className='detail-row') if dividend_yield != 'N/A' else None,
-                            html.Div([
-                                html.Strong("52-Week Range: "),
-                                html.Span(f"{week_low} - {week_high}")
-                            ], className='detail-row') if week_low != 'N/A' and week_high != 'N/A' else None,
-                            html.Div([
-                                html.Strong("Employees: "),
-                                html.Span(employees)
-                            ], className='detail-row') if employees != 'N/A' else None,
-                        ], className='details-column'),
-                    ], className='details-grid'),
-                ], className='details-section') if any(x != 'N/A' for x in [industry, market_cap, pe_ratio, dividend_yield, employees]) else None,
+                                html.Div([
+                                    html.Strong("Dividend Yield: "),
+                                    html.Span(dividend_yield)
+                                ], className='detail-row') if dividend_yield != 'N/A' else None,
+                                html.Div([
+                                    html.Strong("52-Week Range: "),
+                                    html.Span(f"{week_low} - {week_high}")
+                                ], className='detail-row') if week_low != 'N/A' and week_high != 'N/A' else None,
+                                html.Div([
+                                    html.Strong("Employees: "),
+                                    html.Span(employees)
+                                ], className='detail-row') if employees != 'N/A' else None,
+                            ], className='details-column'),
+                        ], className='details-grid'),
+                    ], className='details-section') if any(x != 'N/A' for x in [industry, market_cap, pe_ratio, dividend_yield, employees]) else None,
+
+                    # Description Section
+                    html.Div([
+                        html.H4("Company Description", className='section-subtitle'),
+                        html.P(description, className='company-description')
+                    ], className='description-section') if description != 'N/A' else None,
+                    
+                    # Address Section
+                    html.Div([
+                        html.H4("Headquarters", className='section-subtitle'),
+                        html.P(address, className='company-address')
+                    ], className='address-section') if address != 'N/A' else None,
+                ], id='company-overview-content', className='company-overview-collapsed'),
                 
-                # Address Section (only if available)
-                html.Div([
-                    html.H4("Headquarters", className='section-subtitle'),
-                    html.P(address, className='company-address')
-                ], className='address-section') if address != 'N/A' else None,
+                # Toggle button
+                html.Button([
+                    "Show More",
+                    html.I(className="fas fa-chevron-down ml-2")
+                ], id='toggle-overview-button', className='toggle-overview-button')
                 
             ], className='company-overview-container')
             
+            return content
+                
         except Exception as e:
             logging.error(f"Error creating company overview: {str(e)}")
             return html.Div([

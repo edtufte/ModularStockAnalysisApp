@@ -334,3 +334,32 @@ class DashboardCallbacks:
                     del self._data_cache[cache_key]
             
             return ""
+
+        @app.callback(
+            [
+                Output('company-overview-content', 'className'),
+                Output('toggle-overview-button', 'children')
+            ],
+            [Input('toggle-overview-button', 'n_clicks')],
+            [State('company-overview-content', 'className')]
+        )
+        def toggle_company_overview(n_clicks, current_class):
+            """Toggle the company overview section between collapsed and expanded states"""
+            if n_clicks is None:
+                # Initial state
+                return 'company-overview-collapsed', [
+                    "Show More",
+                    html.I(className="fas fa-chevron-down ml-2")
+                ]
+            
+            # Toggle state
+            if current_class == 'company-overview-collapsed':
+                return 'company-overview-expanded', [
+                    "Show Less",
+                    html.I(className="fas fa-chevron-up ml-2")
+                ]
+            else:
+                return 'company-overview-collapsed', [
+                    "Show More",
+                    html.I(className="fas fa-chevron-down ml-2")
+                ]

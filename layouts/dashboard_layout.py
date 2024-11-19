@@ -70,10 +70,6 @@ class DashboardLayout:
                             children=create_ml_prediction_card(user_id)
                         ),
                         
-                        # Company Overview Section
-                        html.Div(id=DashboardLayout._create_component_id('company-overview', user_id),
-                                className='company-overview-section'),
-                        
                         # Charts section
                         html.Div([
                             dcc.Graph(id=DashboardLayout._create_component_id('stock-chart', user_id)),
@@ -85,6 +81,10 @@ class DashboardLayout:
                             html.H3("Technical Analysis"),
                             dcc.Graph(id=DashboardLayout._create_component_id('technical-chart', user_id))
                         ], className='technical-container'),
+
+                        # Company Overview Section  
+                        html.Div(id=DashboardLayout._create_component_id('company-overview', user_id),
+                                className='company-overview-section'),  
                         
                         # Performance table
                         html.Div([
