@@ -6,6 +6,9 @@ from typing import Dict, Any, Tuple, List, Optional
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
+from config.metric_definitions import METRIC_DEFINITIONS
+import dash_bootstrap_components as dbc
+
 
 class DashboardComponents:
     """Class for creating dashboard UI components"""
@@ -149,26 +152,48 @@ class DashboardComponents:
             ])
 
     @staticmethod
-    def create_metric_card(title: str, value: str) -> html.Div:
-        """Create a metric card component
+    def create_metric_card(metric_key: str, value: Any) -> html.Div:
+        """Create a metric card with tooltip using metric definitions"""
+        metric_info = METRIC_DEFINITIONS.get(metric_key, {
+            'title': metric_key.replace('_', ' ').title(),
+            'explanation': 'No description available',
+            'interpretation': '',
+            'example': ''
+        })
         
-        Args:
-            title (str): Title of the metric
-            value (str): Value to display
-            
-        Returns:
-            html.Div: Styled metric card component
-        """
-        try:
-            return html.Div([
-                html.H4(title, className='metric-title'),
-                html.P(value, className='metric-value')
-            ], className='metric-card')
-        except Exception as e:
-            return html.Div([
-                html.H4("Error", className='error-title'),
-                html.P(f"Error creating metric: {str(e)}", className='error-text')
-            ], className='metric-card error-card')
+        tooltip_content = html.Div([
+            html.P(metric_info['explanation'], style={'marginBottom': '8px'}),
+            html.P(f"Interpretation: {metric_info['interpretation']}", style={'marginBottom': '8px'}),
+            html.P(f"Example: {metric_info['example']}")
+        ])
+
+        return html.Div([
+            html.Div([
+                html.P(metric_info['title'], className="metric-label"),
+                html.I(
+                    className="fas fa-question-circle ml-1",
+                    id=f"tooltip-{metric_key}",
+                    style={'color': 'rgb(180, 180, 180)', 'cursor': 'help'}
+                )
+            ], className="d-flex align-items-center justify-content-between"),
+            html.P(str(value), className="metric-value"),
+            dbc.Tooltip(
+                tooltip_content,
+                target=f"tooltip-{metric_key}",
+                placement="top",
+                style={
+                    "backgroundColor": "rgba(50, 50, 50, 0.95)",
+                    "color": "white",
+                    "maxWidth": "300px",
+                    "fontSize": "0.9rem",
+                    "padding": "8px 12px",
+                    "borderRadius": "4px",
+                    "boxShadow": "0 2px 4px rgba(0,0,0,0.2)",
+                    "zIndex": 1000
+                },
+                delay={"show": 200, "hide": 50}
+            )
+        ], className="metric-container")
 
     @staticmethod
     def create_recommendation_layout(
@@ -693,21 +718,12 @@ class DashboardComponents:
                     html.I(className="fas fa-info-circle mr-2", style={"color": "gray"}),
                     html.Span("No benchmark selected")
                 ], className="benchmark-status-info")
-            
             # Create metric cards
             metrics.update({
-                'price_card': DashboardComponents.create_metric_card(
-                    "Current Price", f"${current_price:.2f}"
-                ),
-                'change_card': DashboardComponents.create_metric_card(
-                    "Period Return", change_text
-                ),
-                'volatility_card': DashboardComponents.create_metric_card(
-                    "Annualized Volatility", f"{volatility:.1f}%"
-                ),
-                'sharpe_card': DashboardComponents.create_metric_card(
-                    "Sharpe Ratio", f"{sharpe_ratio:.2f}"
-                )
+                'price_card': DashboardComponents.create_metric_card('current_price', f"${current_price:.2f}"),
+                'change_card': DashboardComponents.create_metric_card('total_return', change_text),
+                'volatility_card': DashboardComponents.create_metric_card('volatility', f"{volatility:.1f}%"),
+                'sharpe_card': DashboardComponents.create_metric_card('sharpe_ratio', f"{sharpe_ratio:.2f}")
             })
             
             return metrics

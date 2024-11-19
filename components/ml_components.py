@@ -3,6 +3,7 @@ import plotly.graph_objs as go
 from typing import Dict, Any
 import pandas as pd
 import dash_bootstrap_components as dbc
+from config.metric_definitions import METRIC_DEFINITIONS
 
 def create_ml_prediction_card(predictions: Dict[str, Any]) -> html.Div:
     """Create a card displaying ML predictions and insights"""
