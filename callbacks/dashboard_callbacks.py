@@ -21,11 +21,11 @@ from technical_indicators import TechnicalIndicators
 class DashboardCallbacks:
     """Class for managing dashboard callbacks with improved refresh handling"""
     
-    def __init__(self):
-        self._data_cache = {}
-        self._last_update = {}
+    def __init__(self):  # No app parameter here
         self.logger = logging.getLogger(__name__)
-    
+        self.ml_service = MLService()
+        self._data_cache = {}
+
     def should_refresh_data(self, ticker: str, timeframe: str, cached_data: Optional[pd.DataFrame] = None) -> bool:
         """Determine if data should be refreshed based on cache and market hours"""
         if cached_data is None:
@@ -57,15 +57,16 @@ class DashboardCallbacks:
 
     def register_callbacks(self, app):
         """Register all dashboard callbacks"""
-        
+        dashboard = DashboardCallbacks()  # Create instance here
+            
         @app.callback(
             [Output('benchmark-dropdown', 'value'),
-             Output('benchmark-dropdown-backtesting', 'value')],
+            Output('benchmark-dropdown-backtesting', 'value')],
             [Input('analyze-button', 'n_clicks'),
-             Input('stock-input', 'n_submit'),
-             Input('timeframe-dropdown', 'value')],
+            Input('stock-input', 'n_submit'),
+            Input('timeframe-dropdown', 'value')],
             [State('benchmark-dropdown', 'value'),
-             State('user-id', 'data')]
+            State('user-id', 'data')]
         )
         def refresh_benchmark_data(n_clicks, n_submit, timeframe, current_benchmark, user_id):
             """Refresh benchmark data when analyze is clicked"""
@@ -334,3 +335,5 @@ class DashboardCallbacks:
                     del self._data_cache[cache_key]
             
             return ""
+
+        return self  # Optional, if you need the instance elsewhere

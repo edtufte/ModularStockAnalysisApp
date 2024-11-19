@@ -2,6 +2,7 @@
 import dash
 from dash import html, dcc
 from dash.dependencies import Input, Output
+from callbacks import dashboard_callbacks
 from layouts.dashboard_layout import DashboardLayout
 from layouts.portfolio_layout import PortfolioLayout
 from layouts.backtesting_layout import BacktestingLayout
@@ -49,9 +50,8 @@ def create_app():
         ])
     ])
 
-    # Initialize callbacks with app instance
-    dashboard_callbacks = DashboardCallbacks(app)
-    dashboard_callbacks.register_callbacks(app)  # Register callbacks using instance
+    # Register callbacks
+    dashboard_callbacks.register_callbacks(app)
     portfolio_callbacks.register_callbacks(app, db)
     backtesting_callbacks.register_callbacks(app, db)
 
