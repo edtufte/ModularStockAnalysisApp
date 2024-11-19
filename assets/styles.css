@@ -265,13 +265,13 @@ body {
 .analysis-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 1.5rem;
+    gap: 16px;
 }
 
 .recommendation-section,
 .price-targets-section {
     background: #f9fafb;
-    padding: 1.5rem;
+    padding: 16px;
     border-radius: 0.5rem;
 }
 
@@ -389,8 +389,8 @@ body {
 /* Charts Container */
 .charts-container {
     display: grid;
-    gap: 1.25rem;
-    margin-bottom: 2rem;
+    grid-template-columns: 1fr;
+    gap: 20px;
 }
 
 .chart {
@@ -638,7 +638,7 @@ body {
 
 @media (min-width: 1200px) {
     .charts-container {
-        grid-template-columns: 2fr 1fr;
+        grid-template-columns: 1fr;
     }
 }
 
@@ -836,13 +836,6 @@ body {
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
-.model-insights-container {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 20px;
-    margin-top: 20px;
-}
-
 .model-performance-container {
     background: #f8f9fa;
     border-radius: 8px;
@@ -857,18 +850,20 @@ body {
 
 .metrics-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    grid-template-columns: repeat(5, 1fr);
     gap: 15px;
     margin-top: 15px;
+    position: relative;
+    overflow-x: auto;
 }
 
 .metric-container {
+    min-width: 150px;
     background: white;
     border-radius: 6px;
     padding: 15px;
     box-shadow: 0 1px 3px rgba(0,0,0,0.05);
     transition: transform 0.2s;
-    position: relative;
 }
 
 .metric-container:hover {
@@ -912,4 +907,46 @@ body {
 .fa-question-circle {
     margin-left: 5px;
     cursor: help;
+}
+
+/* Prevent wrapping in metric value */
+.metric-value {
+    white-space: nowrap;
+}
+
+.metric-value .main-value {
+    color: #1f2937;
+    font-size: 1.5rem;
+    font-weight: 600;
+}
+
+.metric-value .extra-value {
+    font-size: 0.9em; /* Smaller font size */
+    font-style: italic; /* Italicize text */
+    color: #1f2937;
+}
+
+/* Adjusting the model-insights-container if needed */
+.model-insights-container {
+    display: flex;
+    flex-direction: row;
+    gap: 20px;
+    margin-top: 20px;
+}
+
+/* Alternatively, ensure the grid allows enough space */
+@media (min-width: 768px) {
+    .model-insights-container {
+        grid-template-columns: 2fr 1fr; /* Adjust columns to give metrics more space */
+    }
+}
+
+/* Add responsive handling */
+@media (max-width: 1200px) {
+    .metrics-grid {
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        overflow-x: scroll;
+        scrollbar-width: thin;
+        -webkit-overflow-scrolling: touch;
+    }
 }

@@ -49,8 +49,8 @@ def create_app():
         ])
     ])
 
-    # Register callbacks
-    dashboard_callbacks = DashboardCallbacks()  # Create instance
+    # Initialize callbacks with app instance
+    dashboard_callbacks = DashboardCallbacks(app)
     dashboard_callbacks.register_callbacks(app)  # Register callbacks using instance
     portfolio_callbacks.register_callbacks(app, db)
     backtesting_callbacks.register_callbacks(app, db)

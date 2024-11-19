@@ -150,19 +150,24 @@ class DashboardComponents:
 
     @staticmethod
     def create_metric_card(title: str, value: str) -> html.Div:
-        """Create a metric card component
-        
-        Args:
-            title (str): Title of the metric
-            value (str): Value to display
-            
-        Returns:
-            html.Div: Styled metric card component
-        """
+        """Create a metric card component with improved handling of parentheses."""
         try:
+            # Split value if it contains parentheses
+            if '(' in value and ')' in value:
+                main_value = value.split('(')[0].strip()
+                extra_value = '(' + value.split('(', 1)[1]
+                # Create separate spans for styling
+                value_content = [
+                    html.Span(main_value, className='main-value'),
+                    html.Span(' '),  # Add space
+                    html.Span(extra_value, className='extra-value')
+                ]
+            else:
+                value_content = html.Span(value, className='main-value')
+
             return html.Div([
                 html.H4(title, className='metric-title'),
-                html.P(value, className='metric-value')
+                html.P(value_content, className='metric-value')
             ], className='metric-card')
         except Exception as e:
             return html.Div([
@@ -294,7 +299,7 @@ class DashboardComponents:
                         
                     ], className='recommendation-section', style={
                         'backgroundColor': '#ffffff',
-                        'padding': '24px',
+                        'padding': '16px',
                         'borderRadius': '8px',
                         'boxShadow': '0 1px 3px rgba(0, 0, 0, 0.1)',
                         'flex': '1'
@@ -500,14 +505,14 @@ class DashboardComponents:
                         ], className='price-targets-grid')
                     ], className='price-targets-section', style={
                         'backgroundColor': '#ffffff',
-                        'padding': '24px',
+                        'padding': '16px',
                         'borderRadius': '8px',
                         'boxShadow': '0 1px 3px rgba(0, 0, 0, 0.1)',
                         'flex': '1'
                     })
                 ], style={
                     'display': 'flex',
-                    'gap': '24px',
+                    'gap': '16px',
                     'flexWrap': 'wrap'
                 })
             ], className='analysis-container')
