@@ -16,7 +16,7 @@ from services.ml_service import MLService
 from components.dashboard_components import DashboardComponents
 from components.charts import ChartComponents
 from components.ml_components import create_ml_prediction_card
-from technical_indicators import TechnicalIndicators
+from services.technical_indicators import TechnicalIndicators
 
 class DashboardCallbacks:
     """Class for managing dashboard callbacks with improved refresh handling"""

@@ -913,3 +913,14 @@ body {
     margin-left: 5px;
     cursor: help;
 }
+
+.dash-tooltip {
+    background-color: rgba(50, 50, 50, 0.95) !important;
+    color: white !important;
+    border: none !important;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2) !important;
+}
+
+.dash-tooltip:after {
+    border-bottom-color: rgba(50, 50, 50, 0.95) !important;
+}

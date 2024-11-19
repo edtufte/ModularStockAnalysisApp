@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 from typing import Dict, Any, Optional, List, Tuple
 import logging
-from technical_indicators import TechnicalIndicators
+from services.technical_indicators import TechnicalIndicators
 from services.stock_data_service import StockDataService
 
 class AnalysisService:

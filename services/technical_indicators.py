@@ -1,4 +1,4 @@
-# technical_indicators.py
+# services/technical_indicators.py
 import pandas as pd
 import numpy as np
 from typing import Optional, Tuple, Dict

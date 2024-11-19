@@ -241,8 +241,13 @@ def create_ml_prediction_card(predictions: Dict[str, Any]) -> html.Div:
                         target=metric_id,
                         placement="top",
                         style={
+                            "backgroundColor": "rgba(50, 50, 50, 0.95)",
+                            "color": "white",
                             "maxWidth": "300px",
                             "fontSize": "0.9rem",
+                            "padding": "8px 12px",
+                            "borderRadius": "4px",
+                            "boxShadow": "0 2px 4px rgba(0,0,0,0.2)",
                             "zIndex": 1000
                         },
                         delay={"show": 200, "hide": 50}

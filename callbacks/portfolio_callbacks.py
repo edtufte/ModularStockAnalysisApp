@@ -6,12 +6,13 @@ from dash import html, ctx, callback_context, no_update
 import logging
 from typing import Dict, Any, List
 from datetime import datetime
+import json
 
 from services.stock_data_service import StockDataService
 from models.portfolio import Portfolio
 from components.dashboard_components import DashboardComponents
 from components.charts import ChartComponents
-from technical_indicators import TechnicalIndicators
+from services.technical_indicators import TechnicalIndicators
 
 def register_callbacks(app, db):
     portfolio = Portfolio(db)

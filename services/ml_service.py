@@ -6,8 +6,10 @@ from lightgbm import early_stopping
 from sklearn.model_selection import TimeSeriesSplit
 from sklearn.metrics import mean_absolute_percentage_error, mean_squared_error
 import logging
-from typing import Dict, Any, List, Tuple, Optional
+from typing import Dict, Any, List, Tuple, Optional, Union
 from datetime import datetime, timedelta
+import tempfile
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -102,54 +104,66 @@ class MLService:
         return None
 
     def train_prophet(self, df: pd.DataFrame, prediction_days: int = 30) -> Dict[str, Any]:
-        """Train Prophet model for time series prediction"""
+        """Train Prophet model with enhanced validation metrics"""
         try:
-            # Calculate forward-looking MAPE
-            forward_mape = self.calculate_forward_mape(df, forward_days=30)
+            logger.info("Starting Prophet model training")
             
-            # Prepare data for Prophet
-            prophet_df = pd.DataFrame({
-                'ds': df.index,
-                'y': df['Close']
-            })
-            
-            # Initialize and train Prophet model
-            self.prophet_model = Prophet(
-                yearly_seasonality=True,
-                weekly_seasonality=True,
-                daily_seasonality=True,
-                changepoint_prior_scale=0.05
-            )
-            self.prophet_model.fit(prophet_df)
-            
-            # Make future predictions (extending to 60 days)
-            future_dates = self.prophet_model.make_future_dataframe(periods=60)
-            forecast = self.prophet_model.predict(future_dates)
-            
-            # Split into historical and future predictions
-            historical_mask = forecast['ds'].isin(df.index)
-            future_mask = ~historical_mask
-            
-            # Calculate metrics on training data
-            train_predictions = forecast[historical_mask]['yhat']
-            mape = mean_absolute_percentage_error(df['Close'], train_predictions) * 100  # Convert to percentage
-            rmse = np.sqrt(mean_squared_error(df['Close'], train_predictions))
-            
-            return {
-                'historical_dates': forecast[historical_mask]['ds'].tolist(),
-                'historical_values': forecast[historical_mask]['yhat'].tolist(),
-                'historical_actual': df['Close'].tolist(),
-                'forecast_dates': forecast[future_mask]['ds'].tolist(),
-                'forecast_values': forecast[future_mask]['yhat'].tolist(),
-                'forecast_lower': forecast[future_mask]['yhat_lower'].tolist(),
-                'forecast_upper': forecast[future_mask]['yhat_upper'].tolist(),
-                'metrics': {
-                    'mape': mape,
-                    'forward_mape': forward_mape,  # Add forward-looking MAPE
-                    'rmse': rmse
+            # Add temporary directory handling
+            with tempfile.TemporaryDirectory() as tmpdir:
+                # Set Prophet's temp directory
+                os.environ['PROPHET_TEMP_DIR'] = tmpdir
+                
+                # Prepare data for Prophet
+                prophet_df = pd.DataFrame({
+                    'ds': df.index,
+                    'y': df['Close']
+                })
+                
+                # Configure Prophet model
+                model = Prophet(
+                    yearly_seasonality=True,
+                    weekly_seasonality=True,
+                    daily_seasonality=True,
+                    changepoint_prior_scale=0.05
+                )
+                
+                # Fit model with error handling
+                try:
+                    model.fit(prophet_df)
+                except Exception as e:
+                    logger.error(f"Prophet model fitting failed: {str(e)}")
+                    return None
+                
+                # Make future predictions
+                future = model.make_future_dataframe(periods=prediction_days)
+                forecast = model.predict(future)
+                
+                # Calculate validation metrics
+                validation_metrics = self.perform_time_series_validation(df)
+                
+                # Calculate prediction confidence intervals
+                historical_errors = np.abs(
+                    df['Close'].values - 
+                    forecast['yhat'][:len(df)].values
+                ) / df['Close'].values
+                
+                error_percentile = np.percentile(historical_errors, 95)
+                
+                results = {
+                    'forecast_dates': forecast['ds'].values,
+                    'forecast_values': forecast['yhat'].values,
+                    'forecast_lower': forecast['yhat'].values * (1 - error_percentile),
+                    'forecast_upper': forecast['yhat'].values * (1 + error_percentile),
+                    'metrics': {
+                        'mape': np.mean(historical_errors) * 100,
+                        'rmse': np.sqrt(np.mean((df['Close'].values - forecast['yhat'][:len(df)].values) ** 2))
+                    },
+                    'validation_metrics': validation_metrics
                 }
-            }
-            
+                
+                logger.info("Prophet model training completed successfully")
+                return results
+                
         except Exception as e:
             logger.error(f"Error in Prophet training: {str(e)}")
             return None
@@ -216,9 +230,13 @@ class MLService:
                 'rmse': np.mean([m['rmse'] for m in metrics])
             }
             
+            # Add time-series validation metrics
+            validation_metrics = self.perform_time_series_validation(df)
+            
             return {
                 'feature_importance': self.feature_importance,
-                'metrics': self.metrics
+                'metrics': self.metrics,
+                'validation_metrics': validation_metrics  # Add validation metrics to return
             }
             
         except Exception as e:
@@ -241,6 +259,11 @@ class MLService:
                 logger.warning("Prophet model failed to generate predictions")
                 return {}
                 
+            # Log validation metrics
+            if 'validation_metrics' in prophet_results:
+                logger.info("Validation metrics available from Prophet model")
+                logger.debug(f"Validation metrics: {prophet_results['validation_metrics']}")
+                
             # Split historical and future predictions
             historical_mask = pd.to_datetime(prophet_results['forecast_dates']).isin(df.index)
             future_mask = ~historical_mask
@@ -258,12 +281,12 @@ class MLService:
                 'forecast_lower': np.array(prophet_results['forecast_lower'])[future_mask].tolist(),
                 'forecast_upper': np.array(prophet_results['forecast_upper'])[future_mask].tolist(),
                 'metrics': prophet_results['metrics'],
+                'validation_metrics': prophet_results.get('validation_metrics', {}),  # Add validation metrics
                 'training_period': {
                     'start': df.index[0].strftime('%Y-%m-%d'),
                     'end': df.index[-1].strftime('%Y-%m-%d')
                 }
             }
-            
             # Get feature importance from LightGBM
             try:
                 lgb_results = self.train_lgb(df_features)
@@ -291,6 +314,12 @@ class MLService:
             if prophet_results and lgb_results:
                 forecast_df = prophet_results['forecast'].tail(prediction_days)
                 
+                # Add validation metrics from both models
+                validation_metrics = {
+                    'prophet': prophet_results.get('validation_metrics', {}),
+                    'lightgbm': lgb_results.get('validation_metrics', {})
+                }
+                
                 return {
                     'predictions': {
                         'dates': forecast_df['ds'].tolist(),
@@ -302,7 +331,8 @@ class MLService:
                     'metrics': {
                         'prophet': prophet_results['metrics'],
                         'lightgbm': lgb_results['metrics']
-                    }
+                    },
+                    'validation_metrics': validation_metrics  # Add validation metrics
                 }
                 
             return None
@@ -331,19 +361,23 @@ class MLService:
                 reverse=True
             )[:5])
             
-            # Generate signal
+            # Use validation metrics for confidence calculation
+            validation_metrics = predictions.get('validation_metrics', {})
+            hit_rate = validation_metrics.get('prophet', {}).get('hit_rate', {}).get('mean', 50)
+            
+            # Generate signal with confidence based on hit rate and trend magnitude
             if predicted_trend > 0.05:  # 5% threshold
                 signal = 'Strong Buy'
-                confidence = min(abs(predicted_trend) * 100, 100)
+                confidence = min(hit_rate * abs(predicted_trend) * 20, 100)  # Scale confidence
             elif predicted_trend > 0.02:
                 signal = 'Buy'
-                confidence = min(abs(predicted_trend) * 100, 100)
+                confidence = min(hit_rate * abs(predicted_trend) * 15, 100)
             elif predicted_trend < -0.05:
                 signal = 'Strong Sell'
-                confidence = min(abs(predicted_trend) * 100, 100)
+                confidence = min(hit_rate * abs(predicted_trend) * 20, 100)
             elif predicted_trend < -0.02:
                 signal = 'Sell'
-                confidence = min(abs(predicted_trend) * 100, 100)
+                confidence = min(hit_rate * abs(predicted_trend) * 15, 100)
             else:
                 signal = 'Hold'
                 confidence = 50
@@ -353,9 +387,134 @@ class MLService:
                 'confidence': confidence,
                 'predicted_trend': predicted_trend,
                 'top_features': top_features,
-                'metrics': predictions['metrics']
+                'metrics': predictions['metrics'],
+                'validation_metrics': validation_metrics  # Add validation metrics
             }
             
         except Exception as e:
             logger.error(f"Error in market signals: {str(e)}")
             return None
+
+    def calculate_hit_rate(self, predictions: np.ndarray, actuals: np.ndarray) -> float:
+        """Calculate directional accuracy of predictions"""
+        try:
+            pred_direction = np.sign(np.diff(predictions))
+            actual_direction = np.sign(np.diff(actuals))
+            hit_rate = np.mean(pred_direction == actual_direction) * 100
+            return float(hit_rate)  # Ensure float type
+        except Exception as e:
+            logger.error(f"Error calculating hit rate: {str(e)}")
+            return 0.0
+
+    def calculate_profit_factor(self, predictions: np.ndarray, actuals: np.ndarray) -> float:
+        """Calculate ratio of gains to losses in predictions"""
+        try:
+            pred_returns = np.diff(predictions) / predictions[:-1]
+            actual_returns = np.diff(actuals) / actuals[:-1]
+            
+            gains = np.sum(actual_returns[pred_returns > 0])
+            losses = abs(np.sum(actual_returns[pred_returns < 0]))
+            
+            return float(abs(gains / losses)) if losses != 0 else float('inf')
+        except Exception as e:
+            logger.error(f"Error calculating profit factor: {str(e)}")
+            return 0.0
+
+    def calculate_calmar_ratio(self, returns: np.ndarray, window: int = 252) -> float:
+        """Calculate Calmar ratio (Annual return / Max drawdown)"""
+        cumulative_returns = (1 + returns).cumprod()
+        rolling_max = np.maximum.accumulate(cumulative_returns)
+        drawdowns = (cumulative_returns - rolling_max) / rolling_max
+        max_drawdown = abs(np.min(drawdowns))
+        
+        annual_return = (cumulative_returns[-1] ** (252 / len(returns)) - 1)
+        
+        return annual_return / max_drawdown if max_drawdown != 0 else np.inf
+
+    def calculate_omega_ratio(self, returns: np.ndarray, threshold: float = 0) -> float:
+        """Calculate Omega ratio (probability-weighted ratio of gains vs losses)"""
+        gains = returns[returns > threshold]
+        losses = returns[returns < threshold]
+        
+        if len(losses) == 0:
+            return np.inf
+        
+        return (np.sum(gains) / len(gains)) / abs(np.sum(losses) / len(losses))
+
+    def perform_time_series_validation(
+            self, 
+            df: pd.DataFrame, 
+            n_splits: int = 5, 
+            initial_window: int = 252
+        ) -> Dict[str, Dict[str, Union[float, Tuple[float, float]]]]:
+        """Perform time-series cross validation with rolling windows"""
+        try:
+            validation_metrics = []
+            logger.info(f"Starting time-series validation with {n_splits} splits")
+            
+            # Calculate total size and step size
+            total_size = len(df)
+            step_size = (total_size - initial_window) // n_splits
+            
+            for i in range(n_splits):
+                try:
+                    start_idx = 0
+                    train_end_idx = initial_window + (i * step_size)
+                    test_end_idx = min(train_end_idx + step_size, total_size)
+                    
+                    logger.debug(f"Validation fold {i+1}: train_end={train_end_idx}, test_end={test_end_idx}")
+                    
+                    # Get train and test sets
+                    train_df = df.iloc[start_idx:train_end_idx].copy()
+                    test_df = df.iloc[train_end_idx:test_end_idx].copy()
+                    
+                    if len(test_df) == 0:
+                        logger.warning(f"Empty test set in fold {i+1}, skipping")
+                        continue
+                    
+                    # Calculate metrics for this fold
+                    actuals = test_df['Close'].values
+                    returns = test_df['Close'].pct_change().dropna().values
+                    
+                    # Calculate basic prediction metrics
+                    fold_metrics = {
+                        'hit_rate': self.calculate_hit_rate(test_df['Close'].values[:-1], test_df['Close'].values[1:]),
+                        'profit_factor': self.calculate_profit_factor(test_df['Close'].values[:-1], test_df['Close'].values[1:]),
+                        'calmar_ratio': self.calculate_calmar_ratio(returns),
+                        'omega_ratio': self.calculate_omega_ratio(returns)
+                    }
+                    
+                    validation_metrics.append(fold_metrics)
+                    logger.debug(f"Fold {i+1} metrics: {fold_metrics}")
+                    
+                except Exception as e:
+                    logger.error(f"Error in validation fold {i+1}: {str(e)}")
+                    continue
+            
+            if not validation_metrics:
+                logger.warning("No valid metrics collected during validation")
+                return {}
+                
+            # Calculate aggregate metrics
+            aggregate_metrics = {}
+            for metric in validation_metrics[0].keys():
+                values = [fold[metric] for fold in validation_metrics]
+                aggregate_metrics[metric] = {
+                    'mean': float(np.mean(values)),
+                    'std': float(np.std(values)),
+                    'min': float(np.min(values)),
+                    'max': float(np.max(values)),
+                    '95_conf_interval': (
+                        float(np.percentile(values, 2.5)),
+                        float(np.percentile(values, 97.5))
+                    )
+                }
+            
+            logger.info("Time-series validation completed successfully")
+            logger.debug(f"Aggregate metrics: {aggregate_metrics}")
+            
+            return aggregate_metrics
+            
+        except Exception as e:
+            logger.error(f"Error in time-series validation: {str(e)}")
+            return {}
